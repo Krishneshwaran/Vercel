@@ -155,7 +155,7 @@ def student_profile(request):
     """
     try:
         # Retrieve the JWT token from cookies
-        jwt_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdHVkZW50X2lkIjoiNjczYzQxNGY0ZTY5NTg5MTQ2YTk3YTE4IiwicmVnbm8iOiI3MTM1MjFjc2UwMDMiLCJleHAiOjE3MzU2NTk5NDksImlhdCI6MTczNTYyMzk0OX0.Rpltg2LvTrSFLt28sPkgxfMt9jFmIxMfVy_p_CO63hc"
+        jwt_token = request.COOKIES.get("jwt")
         print(f"JWT Token: {jwt_token}")
         if not jwt_token:
             raise AuthenticationFailed("Authentication credentials were not provided.")
