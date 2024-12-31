@@ -35,6 +35,7 @@ def generate_tokens_for_student(student_id, regno):
 
     # Encode the token
     token = jwt.encode(access_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    print(token)
     return {'jwt': token}
 
 
@@ -67,6 +68,7 @@ def student_login(request):
                 str(student_user["_id"]),
                 student_user.get("regno")
             )
+
 
             # Create response and set secure cookie
             response = Response({
