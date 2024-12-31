@@ -88,9 +88,12 @@ def student_login(request):
                 value=tokens['jwt'],
                 httponly=True,
                 samesite='Lax',
-                secure=False,
-                max_age=1 * 24 * 60 * 60  # 1 day in seconds
+                secure=True,
+                max_age=1 * 24 * 60 * 60,
+                domain='https://vercel-1bge.onrender.com/' # 1 day in seconds
             )
+            print("JWT",tokens['jwt'])
+            print("JWT2",response)
             return response
 
         return Response({"error": "Invalid email or password"}, status=401)
