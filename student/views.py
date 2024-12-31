@@ -89,8 +89,8 @@ def student_login(request):
                 httponly=True,
                 samesite='Lax',
                 secure=True,
-                max_age=1 * 24 * 60 * 60,
-                domain='https://vercel-1bge.onrender.com/' # 1 day in seconds
+                max_age=1 * 24 * 60 * 60
+                # domain='https://vercel-1bge.onrender.com/' # 1 day in seconds
             )
             print("JWT",tokens['jwt'])
             print("JWT2",response)
