@@ -80,7 +80,8 @@ WSGI_APPLICATION = "backend.wsgi.application"
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # Add the origin of your frontend application
     "http://localhost:3001", 
-    'https://portal-8dvq2n0fs-krishneshwarans-projects.vercel.app/', # Add the origin of your frontend application
+    'https://portal-8dvq2n0fs-krishneshwarans-projects.vercel.app/', 
+    'https://portal-sigma-lac.vercel.app/', # Add the origin of your frontend application
 ]
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
@@ -89,6 +90,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3001",  # Frontend origin
     'http://127.0.0.1:8000',
     'https://portal-8dvq2n0fs-krishneshwarans-projects.vercel.app/',
+    'https://portal-sigma-lac.vercel.app/',
 ]
 
 DATABASES = {
