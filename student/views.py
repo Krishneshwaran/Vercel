@@ -146,36 +146,20 @@ def student_signup(request):
         return Response(
             {"error": "Something went wrong. Please try again later."}, status=500
         )
-
 @api_view(["GET"])
-@permission_classes([AllowAny])  # Allow  without authentication
+@permission_classes([AllowAny])  # Allow without authentication
 def student_profile(request):
     """
-    API to fetch the profile details of the logged-in student.
+    API to fetch the profile details of the student.
     """
     try:
-        # Retrieve the JWT token from cookies
-        jwt_token = request.COOKIES.get("_vercel_jwt")
-        # print(f"JWT Token: {jwt_token}")
-        if not jwt_token:
-            raise AuthenticationFailed("Authentication credentials were not provided.")
-
-        # Decode the JWT token
-        try: 
-            decoded_token = jwt.decode(jwt_token, 'test', algorithms=["HS256"])
-            # print(f"Decoded Token: {decoded_token}")
-        except jwt.ExpiredSignatureError:
-            raise AuthenticationFailed("Access token has expired. Please log in again.")
-        except jwt.InvalidTokenError:
-            raise AuthenticationFailed("Invalid token. Please log in again.")
-
-        # Extract student ID from the decoded token
-        student_id = decoded_token.get("student_id")
+        # Fetch student details from the database (example query based on a known condition)
+        # Here you can query for a student without any token, e.g., based on an ID or other criteria.
+        student_id = request.GET.get('student_id')  # Assume we pass student ID via query parameters
 
         if not student_id:
-            raise AuthenticationFailed("Invalid token payload.")
+            return Response({"error": "Student ID not provided"}, status=400)
 
-        # Fetch student details from the database
         student = student_collection.find_one({"_id": ObjectId(student_id)})
         if not student:
             return Response({"error": "Student not found"}, status=404)
@@ -192,8 +176,6 @@ def student_profile(request):
 
         return Response(response_data, status=200)
 
-    except AuthenticationFailed as auth_error:
-        return Response({"error": str(auth_error)}, status=401)
     except Exception as e:
         print(f"Unexpected error in student_profile: {e}")
         return Response({"error": "An unexpected error occurred"}, status=500)
