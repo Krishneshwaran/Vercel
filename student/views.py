@@ -155,7 +155,7 @@ def student_profile(request):
     """
     try:
         # Retrieve the JWT token from cookies
-        jwt_token = request.COOKIES.get("jwt")
+        jwt_token = request.COOKIES.get("_vercel_jwt")
         # print(f"JWT Token: {jwt_token}")
         if not jwt_token:
             raise AuthenticationFailed("Authentication credentials were not provided.")
