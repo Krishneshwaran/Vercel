@@ -19,8 +19,6 @@ urlpatterns = [
     path('studentstats/<str:regno>/', studentstats, name='studentstats'),
  # path('api/assessment/<str:assessment_id>/', views.get_assessment, name='get_assessment'),
     path("profile/", get_staff_profile, name="get_staff_profile"),
-    path('api/generate-questions/', generate_questions, name='generate_questions'),
-    
     # path("get_students/", get_students, name="get_students"),
 
     # Dashboard
