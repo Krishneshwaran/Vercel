@@ -160,5 +160,5 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
 }
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://localhost:8000', 'https://portal-sigma-lac.vercel.app/']
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'https://vercel-1bge.onrender.com', 'https://portal-sigma-lac.vercel.app/']
 CORS_ALLOW_CREDENTIALS = True
