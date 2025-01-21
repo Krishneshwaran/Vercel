@@ -90,7 +90,7 @@ def student_login(request):
                 samesite='None',
                 secure=True,
                 max_age=1 * 24 * 60 * 60
-                # domain='https://vercel-1bge.onrender.com/' # 1 day in seconds
+                # domain='http://localhost:8000/' # 1 day in seconds
             )
             print("JWT",tokens['jwt'])
             print("JWT2",response)
@@ -121,18 +121,24 @@ def student_signup(request):
             "collegename": data.get("collegename"),
             "dept": data.get("dept"),
             "regno": data.get("regno"),
+            "year": data.get("year"),  # Add year field
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }
 
         # Validate required fields
-        required_fields = ["name", "email", "password", "dept", "collegename", "regno"]
+        required_fields = ["name", "email", "password", "dept", "collegename", "regno", "year"]
         missing_fields = [field for field in required_fields if not data.get(field)]
         if missing_fields:
             return Response(
                 {"error": f"Missing required fields: {', '.join(missing_fields)}"},
                 status=400,
             )
+
+        # Validate year field
+        valid_years = ["I", "II", "III", "IV"]
+        if student_user["year"] not in valid_years:
+            return Response({"error": "Invalid year. Must be one of I, II, III, IV."}, status=400)
 
         # Check if email already exists
         if student_collection.find_one({"email": student_user["email"]}):
@@ -151,6 +157,7 @@ def student_signup(request):
         return Response(
             {"error": "Something went wrong. Please try again later."}, status=500
         )
+
 
 @api_view(["GET"])
 @permission_classes([AllowAny])  # Allow  without authentication
@@ -208,16 +215,21 @@ def student_profile(request):
 def get_students(request):
     cache.clear()  # Clear cache here
     try:
-        students = list(student_collection.find({}, {"_id": 1, "name": 1, "regno": 1, "dept": 1, "collegename": 1}))
+        # Fetch students from the database, including the "year" field
+        students = list(student_collection.find(
+            {}, 
+            {"_id": 1, "name": 1, "regno": 1, "dept": 1, "collegename": 1, "year": 1}  # Include "year" field
+        ))
         
-        # Rename `_id` to `studentId` and convert to string
+        # Rename _id to studentId and convert to string
         for student in students:
             student["studentId"] = str(student["_id"])  # Convert ObjectId to string
-            del student["_id"]  # Remove original `_id` to avoid confusion
+            del student["_id"]  # Remove original _id to avoid confusion
         
         return Response(students, status=200)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
 
 @api_view(["GET"])
 @permission_classes([AllowAny])  # Allow unauthenticated access for testing
@@ -245,7 +257,7 @@ def get_tests_for_student(request):
         if not regno:
             return JsonResponse({"error": "Invalid token payload."}, status=401)
 
-        # Fetch contests where the student is visible in `visible_to`
+        # Fetch contests where the student is visible in visible_to
         contests = list(coding_assessments_collection.find(
             {"visible_to": regno}  # Filter only on 'visible_to'
         ))
@@ -350,7 +362,7 @@ def get_mcq_tests_for_student(request):
         # Fetch MCQ tests where the student is visible in visible_to
         mcq_tests = list(mcq_assessments_collection.find(
             {"visible_to": regno},
-            {"questions": 0,"correctAnswer": 0}  # Filter only on 'visible_to'
+            {"questions": 0, "correctAnswer": 0}  # Filter only on 'visible_to'
         ))
 
         # print("Fetched MCQ tests:", mcq_tests)  # Debugging statement
@@ -363,12 +375,16 @@ def get_mcq_tests_for_student(request):
             {
                 **test,  # Spread the entire test object
                 "_id": test['contestId'],  # Convert _id (ObjectId) to string
-                "assessment_type": "mcq"  # Add assessment_type field
+                "assessment_type": "mcq",  # Add assessment_type field
+                "sections": bool(test.get('sections'))  # Check if sections are available
             }
             for test in mcq_tests
         ]
 
         return JsonResponse(formatted_response, safe=False, status=200)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
 
     except AuthenticationFailed as auth_error:
         return JsonResponse({"error": str(auth_error)}, status=401)
@@ -491,15 +507,13 @@ def check_publish_status(request, identifier=None):
         report = mcq_assessments_report_collection.find_one({"contest_id": identifier}, {"ispublish": 1}) or \
                  coding_report_collection.find_one({"contest_id": identifier}, {"ispublish": 1})
 
-        # If no report is found, default to `ispublish: False`
+        # If no report is found, default to ispublish: False
         if not report:
             return JsonResponse({"ispublish": False}, status=200)
 
-        # If a report exists, return the `ispublish` value
+        # If a report exists, return the ispublish value
         is_publish = report.get("ispublish", False)
         return JsonResponse({"ispublish": is_publish}, status=200)
 
     except Exception as e:
         return JsonResponse({"error": f"Failed to check publish status: {str(e)}"}, status=500)
-
-

@@ -95,9 +95,9 @@ def staff_login(request):
             key='jwt',
             value=tokens['jwt'],
             httponly=True,
-            samesite='None',
+            samesite='Lax',
             path="/",      # Ensure the cookie is sent for all routes
-            secure=True,
+            secure=os.getenv("ENV") == "production",
             max_age=1 * 24 * 60 * 60  # 1 day expiration
         )
 
@@ -192,7 +192,7 @@ def view_test_details(request, contestId):
                         # Find student with _id included
                         student = students_collection.find_one(
                             {"regno": regno},
-                            {"name": 1, "dept": 1, "collegename": 1, "_id": 1}
+                            {"name": 1, "dept": 1, "collegename": 1, "year": 1, "_id": 1}
                         )
                         
                         if student:
@@ -218,6 +218,7 @@ def view_test_details(request, contestId):
                                 "name": student.get('name'),
                                 "dept": student.get('dept'),
                                 "collegename": student.get('collegename'),
+                                "year": student.get('year'),
                                 "studentId": student_id,
                                 "status": status
                             })
@@ -497,6 +498,7 @@ def fetch_mcq_assessments(request):
     """
     Fetch MCQ assessments created by the staff user (identified via JWT token)
     and calculate their status as Live, Completed, or Upcoming.
+    Also counts student completion statuses.
     """
     try:
         # Fetch JWT token
@@ -528,6 +530,11 @@ def fetch_mcq_assessments(request):
             registration_start = assessment.get("assessmentOverview", {}).get("registrationStart")
             registration_end = assessment.get("assessmentOverview", {}).get("registrationEnd")
             visible_users = assessment.get("visible_to", [])
+            student_details = assessment.get("student_details", [])
+            
+            # Count student statuses
+            completed_count = sum(1 for student in student_details if student.get("status", "").lower() == "completed")
+            yet_to_start_count = sum(1 for student in student_details if student.get("status", "").lower() == "yet to start")
             
             # Convert string to datetime if registration_start and registration_end are strings
             if registration_start:
@@ -568,6 +575,8 @@ def fetch_mcq_assessments(request):
                 "duration": assessment.get("testConfiguration", {}).get("duration"),
                 "status": status,  # Add calculated status
                 "assignedCount": len(visible_users),  # Count of users in 'visible_to'
+                "completedCount": completed_count,  # Count of completed students
+                "yetToStartCount": yet_to_start_count,  # Count of yet to start students
             })
 
         return Response({
@@ -651,3 +660,4 @@ def get_staff_profile(request):
     except Exception as e:
         print(f"Unexpected error: {e}")
         return Response({"error": "An unexpected error occurred"}, status=500)
+

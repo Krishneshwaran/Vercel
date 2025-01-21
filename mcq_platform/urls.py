@@ -20,8 +20,8 @@ from .mcqlibrary import save_selected_questions
 
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
     path("save-data/", save_data,name = "saveData"),
+    path("save-section-data/", save_section_data,name = "savesectionData"),
     path("start-contest/", start_contest, name="start_contest"),
     path("questions/", get_questions, name="get_questions"),
     path("save-questions/", save_question, name="save_question"),
@@ -29,10 +29,17 @@ urlpatterns = [
     path("finish-contest/", finish_contest,name="finish_contest"),
     path("bulk-upload/",bulk_upload_questions,name="bulkUpload"),
     path("publish/",publish_mcq,name="publish"),
-    path("submit_assessment/",submit_mcq_assessment,name="submit_assessment"),
+    path("submit_assessment/",submit_mcq_assessment,name="submit_mcq_assessment"),
     path("get_mcqquestions/<str:contestId>/",get_mcqquestions,name="get_mcqquestions"),
     path("bulk-upload/",bulk_upload_questions,name="bulkUpload"),
     path("api/save-selected-questions/", save_selected_questions, name="save_selected_question"),
     path("student-report/<str:contestId>/<str:regno>/", get_student_report, name="student_report"),
-    path("publish-result/<str:contestId>/", publish_result, name="publish_result")
+    path("publish-result/<str:contestId>/", publish_result, name="publish_result"),
+    path("publish_mcq/", publish_mcq,name = "publish_mcq"),
+    path('api/generate-questions/', generate_questions, name='generate_questions'),
+    path("save-assessment-questions/", save_assessment_questions, name='save_assessment_questions'),
+    path('delete-contest/<str:contest_id>/', delete_contest_by_id, name='delete-contest'),
+    path('close-session/<str:contest_id>/', close_session, name='close_session'),
+
+    path('sections/<str:contest_id>/', get_section_questions_for_contest, name='get_section_questions_for_contest'),
 ]

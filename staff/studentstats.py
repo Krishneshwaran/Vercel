@@ -99,6 +99,7 @@ def studentstats(request, regno):
             "collegename": student_data.get("collegename", ""),
             "dept": student_data.get("dept", ""),
             "regno": regno,
+            "year": student_data.get("year",""),
         },
         "performance": {
             "total_tests": len(contest_ids),
@@ -109,4 +110,100 @@ def studentstats(request, regno):
         "assessments": assessments
     }
 
+    return JsonResponse(response_data)
+
+def mcq_student_results(request, regno):
+    client = MongoClient('mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/test_portal_db?retryWrites=true&w=majority')
+    db = client['test_portal_db']
+    # Fetch student data
+    student_data = db.students.find_one({"regno": regno})
+    if not student_data:
+        return JsonResponse({"error": "Student not found"}, status=404)
+    # Fetch MCQ assessment data visible to the student
+    mcq_assessments = db.MCQ_Assessment_Data.find({"visible_to": regno}, {"_id": 0})
+    mcq_list = list(mcq_assessments)
+    # Fetch all MCQ contest IDs visible to the student
+    mcq_contest_ids = [mcq.get("contestId") for mcq in mcq_list if mcq.get("contestId")]
+    # Fetch MCQ report for contests relevant to the student
+    mcq_reports = db.MCQ_Assessment_report.find({"contest_id": {"$in": mcq_contest_ids}})
+    mcq_report_map = {report["contest_id"]: report for report in mcq_reports}
+    
+    # Determine test statuses
+    completed_tests = 0
+    in_progress_tests = 0
+    for contest_id in mcq_contest_ids:
+        report = mcq_report_map.get(contest_id)
+        if not report:
+            # No report means the test is in progress
+            in_progress_tests += 1
+        else:
+            # Find the status for the current student
+            student_status = None
+            for student in report["students"]:
+                if str(student["student_id"]) == str(student_data["_id"]):
+                    student_status = student.get("status")
+                    break
+            if student_status == "Completed":
+                completed_tests += 1
+            else:
+                in_progress_tests += 1
+    # Response with all assessment details
+    assessments = []
+    for mcq in mcq_list:
+        assessment_overview = mcq.get("assessmentOverview", {})
+        problems = []
+        contest_status = "Yet to Start"  # Default status for contest
+        # Check the contest status based on the MCQ report
+        report = mcq_report_map.get(mcq.get("contestId"))
+        if report:
+            for student in report["students"]:
+                if str(student["student_id"]) == str(student_data["_id"]):
+                    contest_status = student.get("status", "Pending")  # Get the contest status
+                    break
+        # Handle problems based on contest status
+        if contest_status == "Completed":
+            for student in report["students"]:
+                if str(student["student_id"]) == str(student_data["_id"]):
+                    attended_questions = student.get("attended_question", [])
+                    for attended_problem in attended_questions:
+                        problems.append({
+                            "title": attended_problem.get("title", ""),
+                            "student_answer": attended_problem.get("student_answer", ""),
+                            "correct_answer": attended_problem.get("correct_answer", "")
+                        })
+                    break
+        elif contest_status == "Pending":
+            problems = "Pending"
+        else:  # Yet to Start
+            problems = "No problems yet"
+        # Add assessment details for this MCQ contest
+        assessments.append({
+            "contestId": mcq.get("contestId", ""),
+            "name": assessment_overview.get("name", ""),
+            "description": assessment_overview.get("description", ""),
+            "registrationStart": assessment_overview.get("registrationStart", ""),
+            "registrationEnd": assessment_overview.get("registrationEnd", ""),
+            "guidelines": assessment_overview.get("guidelines", ""),
+            "questions": mcq.get("testConfiguration", {}).get("questions", ""),
+            "duration": mcq.get("testConfiguration", {}).get("duration", ""),
+            "passPercentage": mcq.get("testConfiguration", {}).get("passPercentage", ""),
+            "problems": problems,
+            "contestStatus": contest_status  # Added contest status
+        })
+    response_data = {
+        "student": {
+            "name": student_data.get("name", ""),
+            "email": student_data.get("email", ""),
+            "collegename": student_data.get("collegename", ""),
+            "dept": student_data.get("dept", ""),
+            "regno": regno,
+        },
+        "performance": {
+            "total_tests": len(mcq_contest_ids),
+            "completed_tests": completed_tests,
+            "in_progress_tests": in_progress_tests,
+            "average_score": 0,  # Placeholder for average score logic
+        },
+        "assessments": assessments
+    }
     return JsonResponse(response_data)
