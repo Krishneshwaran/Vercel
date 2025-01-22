@@ -5,8 +5,6 @@ from .views_contest import *
 from . import views
 
 urlpatterns = [
-    path('manualProblems/', views_auto.fetch_Questions, name='fetch_questions'),
-    path('publish/',views_auto.publish_questions,name='publish_questions'),
     path('contestdetails/', views_contest.saveDetails, name='save_details'),
     path('userinfo/', views_contest.saveUserInfo, name='save_user_info'),  # New endpoint
     # path('api/contests/', get_contests, name='get_contests'),
