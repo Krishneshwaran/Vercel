@@ -218,24 +218,25 @@ def save_question(request):
                 assessment = {"contestId": contest_id, "questions": []}
 
             # Append new questions to the contest
-            existing_questions = assessment.get("questions", [])
-            question_ids = {q.get("question_id") for q in existing_questions}  # Get existing question IDs
-
-            new_questions = []
+            added_questions = []
             for question in questions:
-                if question.get("question_id") not in question_ids:
-                    new_questions.append(question)
+                question_id = ObjectId()  # Generate a unique ObjectId for the question
+                question["_id"] = question_id  # Add the ID to the question
+                added_questions.append(question)
 
-            # Add only unique questions
-            if new_questions:
-                assessment_questions_collection.update_one(
-                    {"contestId": contest_id},
-                    {"$addToSet": {"questions": {"$each": new_questions}}}
-                )
+            # Save new questions to MongoDB
+            assessment_questions_collection.update_one(
+                {"contestId": contest_id},
+                {"$push": {"questions": {"$each": added_questions}}}
+            )
+
+            # Convert ObjectId to string in the response
+            for question in added_questions:
+                question["_id"] = str(question["_id"])
 
             return JsonResponse({
                 "message": "Questions saved successfully!",
-                "added_questions": new_questions
+                "added_questions": added_questions  # Include questions with _id
             }, status=200)
 
         except ValueError as e:
@@ -243,6 +244,8 @@ def save_question(request):
         except Exception as e:
             return JsonResponse({"error": f"An unexpected error occurred: {str(e)}"}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=405)
+
+
 
 @csrf_exempt
 def get_questions(request):
@@ -271,9 +274,11 @@ def get_questions(request):
                 })
                 assessment = {"contestId": contest_id, "questions": []}
 
-            # Fetch the questions
+            # Fetch the questions and convert `_id` to string
             questions = assessment.get("questions", [])
-            print(f"Fetched questions: {questions}")
+            for question in questions:
+                if "_id" in question:
+                    question["_id"] = str(question["_id"])  # Convert ObjectId to string
             return JsonResponse({"questions": questions}, status=200)
         except ValueError as e:
             print(f"Authorization error: {str(e)}")
@@ -282,6 +287,56 @@ def get_questions(request):
             print(f"Unexpected error: {str(e)}")
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=400)
+
+@csrf_exempt
+def update_mcqquestion(request, question_id):
+    if request.method == "PUT":
+        try:
+            # Validate Authorization Header
+            auth_header = request.headers.get("Authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                return JsonResponse({"error": "Authorization header missing or invalid."}, status=401)
+
+            # Decode the token to get the contest_id
+            token = auth_header.split(" ")[1]
+            contest_id = decode_token(token)
+
+            # Fetch the question from the request body
+            data = json.loads(request.body)
+
+            # Convert question_id to ObjectId
+            try:
+                object_id = ObjectId(question_id)  # Convert string to ObjectId
+            except Exception:
+                return JsonResponse({"error": "Invalid question ID format."}, status=400)
+
+            # Update the specific question using $set
+            result = assessment_questions_collection.update_one(
+                {
+                    "contestId": contest_id,
+                    "questions._id": object_id  # Match the specific question ID
+                },
+                {
+                    "$set": {
+                        "questions.$.question": data.get("question"),
+                        "questions.$.options": data.get("options"),
+                        "questions.$.correctAnswer": data.get("correctAnswer"),
+                        "questions.$.level": data.get("level"),
+                        "questions.$.tags": data.get("tags", [])
+                    }
+                }
+            )
+
+            if result.matched_count == 0:
+                return JsonResponse({"error": "Question not found"}, status=404)
+
+            return JsonResponse({"message": "Question updated successfully"}, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": f"An unexpected error occurred: {str(e)}"}, status=500)
+    return JsonResponse({"error": "Invalid request method"}, status=405)
+
+
 
 @csrf_exempt
 def update_question(request):
@@ -320,7 +375,6 @@ def update_question(request):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=400)
-
 
 @csrf_exempt
 def finish_contest(request):
@@ -851,7 +905,20 @@ def publish_result(request, contestId):
         return JsonResponse({"error": str(e)}, status=500)
 
 
+import json
+from django.http import JsonResponse
+import google.generativeai as genai
 
+
+from django.core.mail import send_mail
+from django.conf import settings
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import jwt
+import json
+import logging
+from pymongo import MongoClient
+from datetime import datetime
 
 students_collection = db["students"]  # Assuming you have a students collection
 
@@ -964,6 +1031,7 @@ def publish_mcq(request):
     else:
         return JsonResponse({'error': 'Invalid request method'}, status=405)
         
+# Configure the model
 
 
 @csrf_exempt

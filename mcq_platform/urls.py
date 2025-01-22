@@ -24,6 +24,7 @@ urlpatterns = [
     path("save-section-data/", save_section_data,name = "savesectionData"),
     path("start-contest/", start_contest, name="start_contest"),
     path("questions/", get_questions, name="get_questions"),
+    path("questions/<str:question_id>/", update_mcqquestion, name="update_mcqquestion"), #manual update
     path("save-questions/", save_question, name="save_question"),
     path("api/assessment/questions/update", update_question, name="update_question"),
     path("finish-contest/", finish_contest,name="finish_contest"),

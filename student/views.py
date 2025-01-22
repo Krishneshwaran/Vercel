@@ -218,7 +218,7 @@ def get_students(request):
         # Fetch students from the database, including the "year" field
         students = list(student_collection.find(
             {}, 
-            {"_id": 1, "name": 1, "regno": 1, "dept": 1, "collegename": 1, "year": 1}  # Include "year" field
+            {"_id": 1, "name": 1, "regno": 1, "dept": 1, "collegename": 1, "year": 1, "email":1}  # Include "year" field
         ))
         
         # Rename _id to studentId and convert to string

@@ -92,13 +92,14 @@ def staff_login(request):
 
         # Set secure cookie for JWT
         response.set_cookie(
-            key='jwt',
-            value=tokens['jwt'],
-            httponly=True,
-            samesite='None',    # Ensure the cookie is sent for all routes
-            secure=True,
-            max_age=1 * 24 * 60 * 60  # 1 day expiration
-        )
+                key='jwt',
+                value=tokens['jwt'],
+                httponly=True,
+                samesite='None',
+                secure=True,
+                max_age=1 * 24 * 60 * 60
+                # domain='http://localhost:8000/' # 1 day in seconds
+            )
 
         logger.info(f"Login successful for staff: {email}")
         return response
@@ -169,6 +170,19 @@ def str_to_datetime(date_str):
             # If both parsing methods fail, raise an error
             raise ValueError(f"Invalid datetime format: {date_str}")
 
+from bson import ObjectId
+
+def serialize_object(obj):
+    if isinstance(obj, list):
+        return [serialize_object(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: serialize_object(value) for key, value in obj.items()}
+    elif isinstance(obj, ObjectId):
+        return str(obj)
+    else:
+        return obj
+
+
 @csrf_exempt
 def view_test_details(request, contestId):
     try:
@@ -180,24 +194,23 @@ def view_test_details(request, contestId):
             if test_details or mcq_details:
                 # Get the relevant document (either test_details or mcq_details)
                 document = test_details if test_details else mcq_details
-                
+
                 # If visible_to exists, fetch student details
                 if 'visible_to' in document:
-                    # Fetch student details for each registration number
                     students_collection = db['students']
                     report_collection = db['coding_report'] if test_details else db['MCQ_Assessment_report']
                     student_details = []
                     for regno in document['visible_to']:
-                        # Find student with _id included
                         student = students_collection.find_one(
                             {"regno": regno},
                             {"name": 1, "dept": 1, "collegename": 1, "year": 1, "_id": 1}
                         )
-                        
+
                         if student:
                             # Convert ObjectId to string for JSON serialization
-                            student_id = str(student['_id'])
-                            
+                            student['_id'] = str(student['_id'])
+                            student_id = student['_id']
+
                             # Check status in report_collection
                             report = report_collection.find_one({
                                 "contest_id": contestId,
@@ -211,7 +224,7 @@ def view_test_details(request, contestId):
                                     if student_report.get('student_id') == student_id:
                                         status = student_report.get('status', 'yet to start')
                                         break
-                            
+
                             student_details.append({
                                 "regno": regno,
                                 "name": student.get('name'),
@@ -221,13 +234,15 @@ def view_test_details(request, contestId):
                                 "studentId": student_id,
                                 "status": status
                             })
-                    
+
                     # Add student details to the response
                     document['student_details'] = student_details
 
-                return JsonResponse(document, safe=False)
+                # Serialize the document before returning
+                return JsonResponse(serialize_object(document), safe=False)
             else:
                 return JsonResponse({"error": "Test not found"}, status=404)
+
 
         elif request.method == "PUT":
             try:
@@ -504,7 +519,7 @@ def fetch_mcq_assessments(request):
         jwt_token = request.COOKIES.get("jwt")
         if not jwt_token:
             raise AuthenticationFailed("Authentication credentials were not provided.")
-        
+
         # Decode JWT token
         try:
             decoded_token = jwt.decode(jwt_token, 'test', algorithms=["HS256"])
@@ -512,7 +527,7 @@ def fetch_mcq_assessments(request):
             raise AuthenticationFailed("Access token has expired. Please log in again.")
         except jwt.InvalidTokenError:
             raise AuthenticationFailed("Invalid token. Please log in again.")
-        
+
         staff_id = decoded_token.get("staff_user")
         if not staff_id:
             raise AuthenticationFailed("Invalid token payload.")
@@ -530,11 +545,11 @@ def fetch_mcq_assessments(request):
             registration_end = assessment.get("assessmentOverview", {}).get("registrationEnd")
             visible_users = assessment.get("visible_to", [])
             student_details = assessment.get("student_details", [])
-            
+
             # Count student statuses
-            completed_count = sum(1 for student in student_details if student.get("status", "").lower() == "completed")
+            completed_count = 0
             yet_to_start_count = sum(1 for student in student_details if student.get("status", "").lower() == "yet to start")
-            
+
             # Convert string to datetime if registration_start and registration_end are strings
             if registration_start:
                 if isinstance(registration_start, str):  # Check if it's a string
@@ -560,6 +575,14 @@ def fetch_mcq_assessments(request):
                     status = "Unknown"
             else:
                 status = "Date Unavailable"
+
+            # Fetch completed count from MCQ_Assessment_report collection
+            contest_id = assessment.get("contestId")
+            if contest_id:
+                report_collection = db['MCQ_Assessment_report']
+                report_cursor = report_collection.find({"contest_id": contest_id})
+                for report in report_cursor:
+                    completed_count += sum(1 for student in report.get("students", []) if student.get("status", "").lower() == "completed")
 
             # Append assessment details
             assessments.append({
