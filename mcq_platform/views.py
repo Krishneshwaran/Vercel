@@ -187,8 +187,101 @@ def save_section_data(request):
     return JsonResponse({"error": "Invalid request method"}, status=400)
 
 
+@csrf_exempt
+def save_question(request):
+    if request.method == "POST":
+        try:
+            # Validate Authorization Header
+            auth_header = request.headers.get("Authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                return JsonResponse({"error": "Authorization header missing or invalid."}, status=401)
 
+            # Decode the token to get the contest_id
+            token = auth_header.split(" ")[1]
+            contest_id = decode_token(token)
 
+            # Parse the request body
+            data = json.loads(request.body)
+            questions = data.get("questions", [])
+            if not questions:
+                return JsonResponse({"error": "No questions provided"}, status=400)
+
+            # Check if the contest_id already exists
+            assessment = assessment_questions_collection.find_one({"contestId": contest_id})
+            if not assessment:
+                # If the contest does not exist, create it
+                print(f"Creating new contest entry for contest_id: {contest_id}")
+                assessment_questions_collection.insert_one({
+                    "contestId": contest_id,
+                    "questions": []
+                })
+                assessment = {"contestId": contest_id, "questions": []}
+
+            # Append new questions to the contest
+            existing_questions = assessment.get("questions", [])
+            question_ids = {q.get("question_id") for q in existing_questions}  # Get existing question IDs
+
+            new_questions = []
+            for question in questions:
+                if question.get("question_id") not in question_ids:
+                    new_questions.append(question)
+
+            # Add only unique questions
+            if new_questions:
+                assessment_questions_collection.update_one(
+                    {"contestId": contest_id},
+                    {"$addToSet": {"questions": {"$each": new_questions}}}
+                )
+
+            return JsonResponse({
+                "message": "Questions saved successfully!",
+                "added_questions": new_questions
+            }, status=200)
+
+        except ValueError as e:
+            return JsonResponse({"error": str(e)}, status=401)
+        except Exception as e:
+            return JsonResponse({"error": f"An unexpected error occurred: {str(e)}"}, status=500)
+    return JsonResponse({"error": "Invalid request method"}, status=405)
+
+@csrf_exempt
+def get_questions(request):
+    if request.method == "GET":
+        print("GET request received")
+        try:
+            # Validate Authorization Header
+            auth_header = request.headers.get("Authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                print("Authorization header missing or invalid")
+                return JsonResponse({"error": "Unauthorized access"}, status=401)
+
+            # Decode the token to get the contest_id
+            token = auth_header.split(" ")[1]
+            contest_id = decode_token(token)
+            print(f"Decoded contest ID: {contest_id}")
+
+            # Check if the contest exists in the database
+            assessment = assessment_questions_collection.find_one({"contestId": contest_id})
+            if not assessment:
+                # If no contest found, create a new entry with an empty questions list
+                print(f"Creating new contest entry for contest_id: {contest_id}")
+                assessment_questions_collection.insert_one({
+                    "contestId": contest_id,
+                    "questions": []
+                })
+                assessment = {"contestId": contest_id, "questions": []}
+
+            # Fetch the questions
+            questions = assessment.get("questions", [])
+            print(f"Fetched questions: {questions}")
+            return JsonResponse({"questions": questions}, status=200)
+        except ValueError as e:
+            print(f"Authorization error: {str(e)}")
+            return JsonResponse({"error": str(e)}, status=401)
+        except Exception as e:
+            print(f"Unexpected error: {str(e)}")
+            return JsonResponse({"error": str(e)}, status=500)
+    return JsonResponse({"error": "Invalid request method"}, status=400)
 
 @csrf_exempt
 def update_question(request):
@@ -227,6 +320,7 @@ def update_question(request):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=400)
+
 
 @csrf_exempt
 def finish_contest(request):
@@ -759,17 +853,6 @@ def publish_result(request, contestId):
 
 
 
-
-from django.core.mail import send_mail
-from django.conf import settings
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import jwt
-import json
-import logging
-from pymongo import MongoClient
-from datetime import datetime
-
 students_collection = db["students"]  # Assuming you have a students collection
 
 logger = logging.getLogger(__name__)
@@ -881,7 +964,6 @@ def publish_mcq(request):
     else:
         return JsonResponse({'error': 'Invalid request method'}, status=405)
         
-# Configure the model
 
 
 @csrf_exempt

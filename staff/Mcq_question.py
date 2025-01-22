@@ -187,8 +187,65 @@ def fetch_all_questions(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
+@csrf_exempt
+def update_question(request, question_id):
+    """
+    Update an existing question in the database using a PUT request.
+    """
+    if request.method == "PUT":
+        try:
+            # Parse JSON payload
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError as e:
+                return JsonResponse({"error": f"Invalid JSON payload: {str(e)}"}, status=400)
 
-import re
+            # Extract and clean fields
+            question = data.get("question", "").strip()
+            options = data.get("options", [])
+            answer = data.get("answer", "").strip()
+            level = data.get("level", "general").strip()
+            tags = data.get("tags", [])
+
+            # Input validation
+            errors = []
+            if not question:
+                errors.append("Question text cannot be empty.")
+            if len(options) != 4 or len(set(options)) != 4:
+                errors.append("Exactly 4 unique options are required.")
+            if not answer:
+                errors.append("Answer cannot be empty.")
+            if answer not in options:
+                errors.append("Answer must be one of the provided options.")
+            if errors:
+                return JsonResponse({"error": errors}, status=400)
+
+            # Build the update payload
+            update_data = {
+                "question": question,
+                "options": options,
+                "answer": answer,
+                "level": level,
+                "tags": tags,
+            }
+
+            # Execute the update query using question_id
+            result = questions_collection.update_one(
+                {"question_id": question_id}, {"$set": update_data}
+            )
+
+            # Check update status
+            if result.matched_count == 0:
+                return JsonResponse({"error": "Question not found"}, status=404)
+
+            return JsonResponse({"message": "Question updated successfully"}, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
+
+    return JsonResponse({"error": "Only PUT requests are allowed"}, status=405)
+
+
 
 
 import logging
@@ -197,3 +254,21 @@ logger = logging.getLogger(__name__)
 
 
 
+@csrf_exempt
+def delete_question(request, question_id):
+    if request.method == "DELETE":
+        try:
+            logger.debug(f"Attempting to delete question_id: {question_id}")
+            result = questions_collection.delete_one({"question_id": question_id})
+            logger.debug(f"Deleted count: {result.deleted_count}")
+
+            if result.deleted_count == 0:
+                return JsonResponse({"error": "Question not found"}, status=404)
+
+            return JsonResponse({"message": "Question deleted successfully"}, status=200)
+
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
+
+    return JsonResponse({"error": "Only DELETE requests are allowed"}, status=405)

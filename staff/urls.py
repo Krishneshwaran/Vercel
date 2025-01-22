@@ -33,6 +33,8 @@ urlpatterns = [
     path("api/mcq-bulk-upload/", bulk_upload, name="mcq_bulk_upload"),
     path("api/upload-single-question/", upload_single_question, name="upload_single_question"),
     path("api/fetch-all-questions/", fetch_all_questions, name="fetch_all_questions"),
+    path("api/update_question/<str:question_id>/", update_question, name="update_question"),
+    path("api/delete_question/<str:question_id>/", delete_question, name="delete_question"),
     path('mcq_stats/<str:regno>/', mcq_student_results, name='mcq_student_results'),
 
 #ViewTest on admin

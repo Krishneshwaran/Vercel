@@ -5,6 +5,11 @@ from .views_contest import *
 from . import views
 
 urlpatterns = [
+    path('compile/',views.compileCode,name='compile'),
+    path('submit/',views.compileHidden,name='compile_hidden'),
+    path('userinput/', views.userInput, name='user_code'),
+    path('manualProblems/', views_auto.fetch_Questions, name='fetch_questions'),
+    path('publish/',views_auto.publish_questions,name='publish_questions'),
     path('contestdetails/', views_contest.saveDetails, name='save_details'),
     path('userinfo/', views_contest.saveUserInfo, name='save_user_info'),  # New endpoint
     # path('api/contests/', get_contests, name='get_contests'),
@@ -18,5 +23,9 @@ urlpatterns = [
     path("api/contests/<str:contest_id>/students/", contest_students, name="contest_students"),
     path('questions/', views_user.fetch_Questions, name='questions'),
     path('saveQuestions/', views_user.fetch_and_save_questions, name= 'saveInFrontend'),
+    path('api/bulk-upload/', views_auto.upload_bulk_coding_questions, name='bulk-upload'),
+    path('api/get-coding-questions/', views_auto.fetch_coding_questions, name='get_coding_questions'),
+    path('api/coding/student-report/<str:contestId>/<str:regno>/', views_auto.get_coding_student_report, name='get_coding_student_report'),   
+    # path('selected/',views.selectedProblems, name='selected_problems'),
 
 ]
