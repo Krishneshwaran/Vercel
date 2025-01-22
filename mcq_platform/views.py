@@ -757,9 +757,7 @@ def publish_result(request, contestId):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-import json
-from django.http import JsonResponse
-import google.generativeai as genai
+
 
 
 from django.core.mail import send_mail
