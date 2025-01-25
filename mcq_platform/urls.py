@@ -37,7 +37,7 @@ urlpatterns = [
     path("publish-result/<str:contestId>/", publish_result, name="publish_result"),
     path("publish_mcq/", publish_mcq,name = "publish_mcq"),
     path("save-assessment-questions/", save_assessment_questions, name='save_assessment_questions'),
-    path('delete-contest/<str:contest_id>/', delete_contest_by_id, name='delete-contest'),
+    path('deletecontest/<str:contest_id>/', delete_contest_by_id, name='delete-contest'),
     path('close-session/<str:contest_id>/', close_session, name='close_session'),
 
     path('sections/<str:contest_id>/', get_section_questions_for_contest, name='get_section_questions_for_contest'),
