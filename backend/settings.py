@@ -80,8 +80,8 @@ WSGI_APPLICATION = "backend.wsgi.application"
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # Add the origin of your frontend application
     "http://localhost:3001", 
-    'https://portal-8dvq2n0fs-krishneshwarans-projects.vercel.app/', 
-    'https://portal-sigma-lac.vercel.app/',
+    'https://portal-8dvq2n0fs-krishneshwarans-projects.vercel.app', 
+    'https://portal-sigma-lac.vercel.app',
     "capacitor://localhost",
     "ionic://localhost",
     "https://localhost",
@@ -93,8 +93,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",  # Frontend origin
     "http://localhost:3001",  # Frontend origin
     'http://127.0.0.1:8000',
-    'https://portal-8dvq2n0fs-krishneshwarans-projects.vercel.app/',
-    'https://portal-sigma-lac.vercel.app/',
+    'https://portal-8dvq2n0fs-krishneshwarans-projects.vercel.app',
+    'https://portal-sigma-lac.vercel.app',
     "capacitor://localhost",
     "ionic://localhost",
     "https://localhost",
