@@ -24,6 +24,7 @@ urlpatterns = [
     path("save-section-data/", save_section_data,name = "savesectionData"),
     path("start-contest/", start_contest, name="start_contest"),
     path("questions/", get_questions, name="get_questions"),
+    path("questions/<str:question_id>/", update_mcqquestion, name="update_mcqquestion"), #manual update
     path("save-questions/", save_question, name="save_question"),
     path("api/assessment/questions/update", update_question, name="update_question"),
     path("finish-contest/", finish_contest,name="finish_contest"),
@@ -36,9 +37,10 @@ urlpatterns = [
     path("student-report/<str:contestId>/<str:regno>/", get_student_report, name="student_report"),
     path("publish-result/<str:contestId>/", publish_result, name="publish_result"),
     path("publish_mcq/", publish_mcq,name = "publish_mcq"),
+    path('api/generate-questions/', generate_questions, name='generate_questions'),
     path("save-assessment-questions/", save_assessment_questions, name='save_assessment_questions'),
-    path('deletecontest/<str:contest_id>/', delete_contest_by_id, name='delete-contest'),
+    path('delete-contest/<str:contest_id>/', delete_contest_by_id, name='delete-contest'),
     path('close-session/<str:contest_id>/', close_session, name='close_session'),
-
+    path("delete-question/<str:question_id>/", delete_question, name="delete_question"),
     path('sections/<str:contest_id>/', get_section_questions_for_contest, name='get_section_questions_for_contest'),
 ]

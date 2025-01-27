@@ -13,5 +13,5 @@ urlpatterns = [
     path("mcq-tests", get_mcq_tests_for_student, name='get_mcq_tests_for_student'),
     path("coding-reports/", get_coding_reports_for_student, name="get_coding_reports_for_student"),
     path("mcq-reports/", get_mcq_reports_for_student, name='get_mcq_reports_for_student'),
-    path("check-publish-status/<str:identifier>/", check_publish_status, name="check_publish_status"),
+    path("check-publish-status/", check_publish_status, name="check_publish_status"),
 ]

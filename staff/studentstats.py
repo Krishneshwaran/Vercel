@@ -10,6 +10,8 @@ def studentstats(request, regno):
     if not student_data:
         return JsonResponse({"error": "Student not found"}, status=404)
 
+    student_id = str(student_data["_id"])  # Convert ObjectId to string
+
     # Fetch contest data visible to the student
     contest_data = db.coding_assessments.find({"visible_to": regno}, {"_id": 0})
     contest_list = list(contest_data)
@@ -35,7 +37,7 @@ def studentstats(request, regno):
             # Find the status for the current student
             student_status = None
             for student in report["students"]:
-                if str(student["student_id"]) == str(student_data["_id"]):
+                if str(student["student_id"]) == student_id:
                     student_status = student.get("status")
                     break
 
@@ -55,14 +57,14 @@ def studentstats(request, regno):
         report = coding_report_map.get(contest.get("contestId"))
         if report:
             for student in report["students"]:
-                if str(student["student_id"]) == str(student_data["_id"]):
+                if str(student["student_id"]) == student_id:
                     contest_status = student.get("status", "Pending")  # Get the contest status
                     break
 
         # Handle problems based on contest status
         if contest_status == "Completed":
             for student in report["students"]:
-                if str(student["student_id"]) == str(student_data["_id"]):
+                if str(student["student_id"]) == student_id:
                     attended_questions = student.get("attended_question", [])
                     for attended_problem in attended_questions:
                         problems.append({
@@ -94,12 +96,13 @@ def studentstats(request, regno):
 
     response_data = {
         "student": {
+            "student_id": student_id,  # Include student_id
             "name": student_data.get("name", ""),
             "email": student_data.get("email", ""),
             "collegename": student_data.get("collegename", ""),
             "dept": student_data.get("dept", ""),
             "regno": regno,
-            "year": student_data.get("year",""),
+            "year": student_data.get("year", ""),
         },
         "performance": {
             "total_tests": len(contest_ids),
@@ -112,22 +115,29 @@ def studentstats(request, regno):
 
     return JsonResponse(response_data)
 
+
 def mcq_student_results(request, regno):
     client = MongoClient('mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/test_portal_db?retryWrites=true&w=majority')
     db = client['test_portal_db']
+
     # Fetch student data
     student_data = db.students.find_one({"regno": regno})
     if not student_data:
         return JsonResponse({"error": "Student not found"}, status=404)
+
+    student_id = str(student_data["_id"])  # Convert ObjectId to string
+
     # Fetch MCQ assessment data visible to the student
     mcq_assessments = db.MCQ_Assessment_Data.find({"visible_to": regno}, {"_id": 0})
     mcq_list = list(mcq_assessments)
+
     # Fetch all MCQ contest IDs visible to the student
     mcq_contest_ids = [mcq.get("contestId") for mcq in mcq_list if mcq.get("contestId")]
+
     # Fetch MCQ report for contests relevant to the student
     mcq_reports = db.MCQ_Assessment_report.find({"contest_id": {"$in": mcq_contest_ids}})
     mcq_report_map = {report["contest_id"]: report for report in mcq_reports}
-    
+
     # Determine test statuses
     completed_tests = 0
     in_progress_tests = 0
@@ -140,30 +150,33 @@ def mcq_student_results(request, regno):
             # Find the status for the current student
             student_status = None
             for student in report["students"]:
-                if str(student["student_id"]) == str(student_data["_id"]):
+                if str(student["student_id"]) == student_id:
                     student_status = student.get("status")
                     break
             if student_status == "Completed":
                 completed_tests += 1
             else:
                 in_progress_tests += 1
+
     # Response with all assessment details
     assessments = []
     for mcq in mcq_list:
         assessment_overview = mcq.get("assessmentOverview", {})
         problems = []
         contest_status = "Yet to Start"  # Default status for contest
+
         # Check the contest status based on the MCQ report
         report = mcq_report_map.get(mcq.get("contestId"))
         if report:
             for student in report["students"]:
-                if str(student["student_id"]) == str(student_data["_id"]):
+                if str(student["student_id"]) == student_id:
                     contest_status = student.get("status", "Pending")  # Get the contest status
                     break
+
         # Handle problems based on contest status
         if contest_status == "Completed":
             for student in report["students"]:
-                if str(student["student_id"]) == str(student_data["_id"]):
+                if str(student["student_id"]) == student_id:
                     attended_questions = student.get("attended_question", [])
                     for attended_problem in attended_questions:
                         problems.append({
@@ -176,6 +189,7 @@ def mcq_student_results(request, regno):
             problems = "Pending"
         else:  # Yet to Start
             problems = "No problems yet"
+
         # Add assessment details for this MCQ contest
         assessments.append({
             "contestId": mcq.get("contestId", ""),
@@ -190,8 +204,10 @@ def mcq_student_results(request, regno):
             "problems": problems,
             "contestStatus": contest_status  # Added contest status
         })
+
     response_data = {
         "student": {
+            "student_id": student_id,  # Include student_id
             "name": student_data.get("name", ""),
             "email": student_data.get("email", ""),
             "collegename": student_data.get("collegename", ""),
@@ -206,4 +222,5 @@ def mcq_student_results(request, regno):
         },
         "assessments": assessments
     }
+
     return JsonResponse(response_data)

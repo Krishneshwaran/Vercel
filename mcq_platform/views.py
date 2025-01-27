@@ -7,6 +7,7 @@ import jwt
 import datetime
 import csv
 from io import StringIO
+import google.generativeai as genai
 import logging
 from bson.objectid import ObjectId
 from rest_framework.exceptions import AuthenticationFailed  # Import this exception
@@ -218,24 +219,25 @@ def save_question(request):
                 assessment = {"contestId": contest_id, "questions": []}
 
             # Append new questions to the contest
-            existing_questions = assessment.get("questions", [])
-            question_ids = {q.get("question_id") for q in existing_questions}  # Get existing question IDs
-
-            new_questions = []
+            added_questions = []
             for question in questions:
-                if question.get("question_id") not in question_ids:
-                    new_questions.append(question)
+                question_id = ObjectId()  # Generate a unique ObjectId for the question
+                question["_id"] = question_id  # Add the ID to the question
+                added_questions.append(question)
 
-            # Add only unique questions
-            if new_questions:
-                assessment_questions_collection.update_one(
-                    {"contestId": contest_id},
-                    {"$addToSet": {"questions": {"$each": new_questions}}}
-                )
+            # Save new questions to MongoDB
+            assessment_questions_collection.update_one(
+                {"contestId": contest_id},
+                {"$push": {"questions": {"$each": added_questions}}}
+            )
+
+            # Convert ObjectId to string in the response
+            for question in added_questions:
+                question["_id"] = str(question["_id"])
 
             return JsonResponse({
                 "message": "Questions saved successfully!",
-                "added_questions": new_questions
+                "added_questions": added_questions  # Include questions with _id
             }, status=200)
 
         except ValueError as e:
@@ -243,6 +245,8 @@ def save_question(request):
         except Exception as e:
             return JsonResponse({"error": f"An unexpected error occurred: {str(e)}"}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=405)
+
+
 
 @csrf_exempt
 def get_questions(request):
@@ -271,9 +275,11 @@ def get_questions(request):
                 })
                 assessment = {"contestId": contest_id, "questions": []}
 
-            # Fetch the questions
+            # Fetch the questions and convert `_id` to string
             questions = assessment.get("questions", [])
-            print(f"Fetched questions: {questions}")
+            for question in questions:
+                if "_id" in question:
+                    question["_id"] = str(question["_id"])  # Convert ObjectId to string
             return JsonResponse({"questions": questions}, status=200)
         except ValueError as e:
             print(f"Authorization error: {str(e)}")
@@ -282,6 +288,89 @@ def get_questions(request):
             print(f"Unexpected error: {str(e)}")
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=400)
+
+@csrf_exempt
+def update_mcqquestion(request, question_id):
+    if request.method == "PUT":
+        try:
+            # Validate Authorization Header
+            auth_header = request.headers.get("Authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                return JsonResponse({"error": "Authorization header missing or invalid."}, status=401)
+
+            # Decode the token to get the contest_id
+            token = auth_header.split(" ")[1]
+            contest_id = decode_token(token)
+
+            # Fetch the question from the request body
+            data = json.loads(request.body)
+
+            # Convert question_id to ObjectId
+            try:
+                object_id = ObjectId(question_id)  # Convert string to ObjectId
+            except Exception:
+                return JsonResponse({"error": "Invalid question ID format."}, status=400)
+
+            # Update the specific question using $set
+            result = assessment_questions_collection.update_one(
+                {
+                    "contestId": contest_id,
+                    "questions._id": object_id  # Match the specific question ID
+                },
+                {
+                    "$set": {
+                        "questions.$.question": data.get("question"),
+                        "questions.$.options": data.get("options"),
+                        "questions.$.correctAnswer": data.get("correctAnswer"),
+                        "questions.$.level": data.get("level"),
+                        "questions.$.tags": data.get("tags", [])
+                    }
+                }
+            )
+
+            if result.matched_count == 0:
+                return JsonResponse({"error": "Question not found"}, status=404)
+
+            return JsonResponse({"message": "Question updated successfully"}, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": f"An unexpected error occurred: {str(e)}"}, status=500)
+    return JsonResponse({"error": "Invalid request method"}, status=405)
+
+@csrf_exempt
+def delete_question(request, question_id):
+    if request.method == "DELETE":
+        try:
+            # Validate Authorization Header
+            auth_header = request.headers.get("Authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                return JsonResponse({"error": "Authorization header missing or invalid."}, status=401)
+
+            # Decode the token to get the contest_id
+            token = auth_header.split(" ")[1]
+            contest_id = decode_token(token)
+
+            # Convert question_id to ObjectId
+            try:
+                object_id = ObjectId(question_id)
+            except Exception:
+                return JsonResponse({"error": "Invalid question ID format."}, status=400)
+
+            # Remove the question from the database
+            result = assessment_questions_collection.update_one(
+                {"contestId": contest_id},
+                {"$pull": {"questions": {"_id": object_id}}}
+            )
+
+            if result.modified_count == 0:
+                return JsonResponse({"error": "Question not found"}, status=404)
+
+            return JsonResponse({"message": "Question deleted successfully"}, status=200)
+
+        except Exception as e:
+            return JsonResponse({"error": f"An unexpected error occurred: {str(e)}"}, status=500)
+
+    return JsonResponse({"error": "Invalid request method"}, status=405)
 
 @csrf_exempt
 def update_question(request):
@@ -320,7 +409,6 @@ def update_question(request):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=400)
-
 
 @csrf_exempt
 def finish_contest(request):
@@ -850,8 +938,15 @@ def publish_result(request, contestId):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
-
-
+from django.core.mail import send_mail
+from django.conf import settings
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import jwt
+import json
+import logging
+from pymongo import MongoClient
+from datetime import datetime
 
 students_collection = db["students"]  # Assuming you have a students collection
 
@@ -928,30 +1023,31 @@ def publish_mcq(request):
             end_time = registration_end.strftime("%H:%M:%S")
             formatted_duration = f"{duration_hours} hours {duration_minutes} minutes"
 
-            # Send email to each selected student
-            for student_email in student_emails:
-                # Fetch student details
-                student = students_collection.find_one({"email": student_email})
-                if not student:
-                    logger.error(f"Student not found for email: {student_email}")
-                    continue
 
-                student_name = student.get("name", "Student")
+            # # Send email to each selected student
+            # for student_email in student_emails:
+            #     # Fetch student details
+            #     student = students_collection.find_one({"email": student_email})
+            #     if not student:
+            #         logger.error(f"Student not found for email: {student_email}")
+            #         continue
 
-                subject = f'Instructions for {test_name}'
-                message = (
-                    f'Dear {student_name},\n\n'
-                    f'You are invited to participate in the {test_name}. Below are the details you need to know:\n\n'
-                    f'Description: {description}\n'
-                    f'Test Schedule: From {start_date}, {start_time} to {end_date}, {end_time}\n'
-                    f'Duration: {formatted_duration}\n\n'
-                    f'Please ensure you are prepared and available during the specified time window.\n\n'
-                    f'If you have any questions or encounter any issues, feel free to contact us at {settings.DEFAULT_FROM_EMAIL}.\n\n'
-                    f'Best of luck with your test!'
-                )
-                from_email = settings.DEFAULT_FROM_EMAIL
-                recipient_list = [student_email]
-                send_mail(subject, message, from_email, recipient_list)
+            #     student_name = student.get("name", "Student")
+
+            #     subject = f'Instructions for {test_name}'
+            #     message = (
+            #         f'Dear {student_name},\n\n'
+            #         f'You are invited to participate in the {test_name}. Below are the details you need to know:\n\n'
+            #         f'Description: {description}\n'
+            #         f'Test Schedule: From {start_date}, {start_time} to {end_date}, {end_time}\n'
+            #         f'Duration: {formatted_duration}\n\n'
+            #         f'Please ensure you are prepared and available during the specified time window.\n\n'
+            #         f'If you have any questions or encounter any issues, feel free to contact us at {settings.DEFAULT_FROM_EMAIL}.\n\n'
+            #         f'Best of luck with your test!'
+            #     )
+            #     from_email = settings.DEFAULT_FROM_EMAIL
+            #     recipient_list = [student_email]
+            #     send_mail(subject, message, from_email, recipient_list)
 
             return JsonResponse({'message': 'Questions and students appended successfully!'}, status=200)
 
@@ -964,7 +1060,93 @@ def publish_mcq(request):
     else:
         return JsonResponse({'error': 'Invalid request method'}, status=405)
         
+# Configure the model
+model = genai.GenerativeModel('gemini-1.5-pro')
+api_key = "AIzaSyCLDQgKnO55UQrnFsL2d79fxanIn_AL0WA"  # Ensure this API key is secure
+genai.configure(api_key=api_key)
 
+@csrf_exempt
+def generate_questions(request):
+    if request.method == "POST":
+        # Getting form data from JSON request body
+        try:
+            data = json.loads(request.body)
+            topic = data.get("topic")
+            subtopic = data.get("subtopic")
+            level = data.get("level")
+            num_questions_input = data.get("num_questions")
+
+            num_questions = int(num_questions_input)  # Convert the input to an integer
+            question_type = "Multiple Choice"  # Force the question type to Multiple Choice
+
+        except (ValueError, KeyError, TypeError):
+            return JsonResponse({"error": "Invalid input. Please ensure all fields are provided correctly."}, status=400)
+
+        if num_questions:
+            # Define the prompt for Multiple Choice Questions
+            prompt = (
+                f"Generate {num_questions} Multiple Choice questions "
+                f"on the topic '{topic}' with subtopic '{subtopic}' "
+                f"for a {level} level audience. "
+                f"Return the questions in the following format without any additional explanation or information:\n\n"
+                f"Question: <The generated question>\n"
+                f"Options: <A list of options separated by semicolons>\n"
+                f"Answer: <The correct answer>\n"
+                f"Negative Marking: <Negative marking value>\n"
+                f"Mark: <Mark value>\n"
+                f"Level: <Difficulty level>\n"
+                f"Tags: <Tags separated by commas>"
+            )
+
+            try:
+                # Request to Gemini AI (Google Generative AI)
+                response = model.generate_content(prompt)
+
+                # Extract the text content from the response
+                question_text = response._result.candidates[0].content.parts[0].text
+
+                # Check if the response is empty or malformed
+                if not question_text.strip():
+                    return JsonResponse({"error": "No questions generated. Please try again."}, status=500)
+
+                questions_list = question_text.strip().split("\n\n")  # Split questions by newlines
+
+                # Collect questions and answers to send as JSON
+                questions_data = []
+
+                for question in questions_list:
+                    lines = question.split("\n")
+                    question_text = lines[0].strip().replace("Question:", "").strip()
+                    options_text = lines[1].replace("Options: ", "").strip()
+                    options = [opt.strip() for opt in options_text.split(";")]  # Split options by semicolons and strip whitespace
+                    answer_text = lines[2].replace("Answer: ", "").strip()
+                    negative_marking = lines[3].replace("Negative Marking: ", "").strip()
+                    mark = lines[4].replace("Mark: ", "").strip()
+                    level = lines[5].replace("Level: ", "").strip()
+                    tags = lines[6].replace("Tags: ", "").strip().split(",")  # Split tags by commas
+                    questions_data.append({
+                        "topic": topic,
+                        "subtopic": subtopic,
+                        "level": level,
+                        "question_type": question_type,
+                        "question": question_text,
+                        "options": options,
+                        "correctAnswer": answer_text,
+                        "negativeMarking": negative_marking,
+                        "mark": mark,
+                        "tags": tags
+                    })
+
+                # Return a JSON response with the generated questions
+                return JsonResponse({
+                    "success": "Questions generated successfully",
+                    "questions": questions_data
+                })
+
+            except Exception as e:
+                return JsonResponse({"error": f"Error generating questions: {str(e)}"}, status=500)
+
+    return JsonResponse({"error": "Invalid request method."}, status=405)
 
 @csrf_exempt
 def save_assessment_questions(request):

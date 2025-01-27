@@ -6,21 +6,27 @@ from . import studentsprofile
 from staff.studentstats import studentstats
 from .studentstats import studentstats, mcq_student_results
 from .assessment import create_assessment
-from .Mcq_question import bulk_upload, upload_single_question, fetch_all_questions, update_question, delete_question
-from .views import fetch_contests, fetch_mcq_assessments 
+from .Mcq_question import (
+    bulk_upload, upload_single_question, fetch_all_questions,
+    update_question, delete_question, create_test, update_test,
+    delete_test, fetch_all_tests, bulk_upload_test, delete_question_from_test, fetch_questions_for_test, bulk_upload_questions_to_test,
+    append_question_to_test,edit_question_in_test
+)
+from .views import fetch_contests, fetch_mcq_assessments
 from .views import fetch_student_stats
 
 urlpatterns = [
-    # Authentication 
+    # Authentication
     path("login/", staff_login, name="staff_login"),
     path("signup/", staff_signup, name="staff_signup"),
+    path("forgot-password/", forgot_password, name="forgot_password"),
+    path("reset-password/", reset_password, name="reset_password"),
     path('api/create-assessment/', assessment.create_assessment, name='create_assessment'),
-    path('studentprofile/', studentsprofile.student_profile, name='student_profile'), 
+    path('studentprofile/', studentsprofile.student_profile, name='student_profile'),
     path('studentstats/<str:regno>/', studentstats, name='studentstats'),
- # path('api/assessment/<str:assessment_id>/', views.get_assessment, name='get_assessment'),
+    # path('api/assessment/<str:assessment_id>/', views.get_assessment, name='get_assessment'),
     path("profile/", get_staff_profile, name="get_staff_profile"),
 
-    
     # path("get_students/", get_students, name="get_students"),
 
     # Dashboard
@@ -29,7 +35,7 @@ urlpatterns = [
     # Assessment API
     path('api/create-assessment/', create_assessment, name='create_assessment'),
 
-    #mcq
+    # MCQ
     path("api/mcq-bulk-upload/", bulk_upload, name="mcq_bulk_upload"),
     path("api/upload-single-question/", upload_single_question, name="upload_single_question"),
     path("api/fetch-all-questions/", fetch_all_questions, name="fetch_all_questions"),
@@ -37,8 +43,20 @@ urlpatterns = [
     path("api/delete_question/<str:question_id>/", delete_question, name="delete_question"),
     path('mcq_stats/<str:regno>/', mcq_student_results, name='mcq_student_results'),
 
-#ViewTest on admin
+    # ViewTest on admin
     path('students/stats', fetch_student_stats, name='student_stats'),
-    path('api/contests/<str:contestId>/', view_test_details, name='view_test_details'),  
-    ]
+    path('api/contests/<str:contestId>/', view_test_details, name='view_test_details'),
 
+    # Test Management
+    path("api/create-test/", create_test, name="create_test"),
+    path("api/update-test/<str:test_id>/", update_test, name="update_test"),
+    path("api/delete-test/<str:test_id>/", delete_test, name="delete_test"),
+    path("api/fetch-all-tests/", fetch_all_tests, name="fetch_all_tests"),
+    path("api/fetch_questions_for_test/", fetch_questions_for_test, name="fetch_questions_for_test"),
+    path("api/bulk-upload-to-test/", bulk_upload_test, name="bulk_upload_test"),
+    path("api/delete-question-from-test/<str:test_id>/<str:question_id>/", delete_question_from_test, name="delete_question_from_test"),
+    path('api/bulk-upload-questions-to-test/', bulk_upload_questions_to_test, name='bulk_upload_questions_to_test'),
+    path('api/append-question-to-test/', append_question_to_test, name='append_question_to_test'),
+    path('edit_question_in_test/<str:test_id>/<str:question_id>/', edit_question_in_test, name='edit_question_in_test'),
+
+]

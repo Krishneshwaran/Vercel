@@ -7,7 +7,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from bson import ObjectId
 from datetime import datetime
 import logging
-
+import json
 from rest_framework.views import csrf_exempt
 from .utils import *
 from django.core.cache import cache
@@ -218,7 +218,7 @@ def get_students(request):
         # Fetch students from the database, including the "year" field
         students = list(student_collection.find(
             {}, 
-            {"_id": 1, "name": 1, "regno": 1, "dept": 1, "collegename": 1, "year": 1}  # Include "year" field
+            {"_id": 1, "name": 1, "regno": 1, "dept": 1, "collegename": 1, "year": 1, "email":1}  # Include "year" field
         ))
         
         # Rename _id to studentId and convert to string
@@ -495,25 +495,36 @@ def get_mcq_reports_for_student(request):
 
 
 @csrf_exempt
-def check_publish_status(request, identifier=None):
+def check_publish_status(request):
     """
     API to check whether the results for a specific test or contest have been published.
     """
     try:
-        if not identifier:
-            return JsonResponse({"ispublish": False}, status=200)
+        if request.method == 'POST':
+            data = json.loads(request.body)
+            test_ids = data.get('testIds', [])
 
-        # Check both collections for the identifier
-        report = mcq_assessments_report_collection.find_one({"contest_id": identifier}, {"ispublish": 1}) or \
-                 coding_report_collection.find_one({"contest_id": identifier}, {"ispublish": 1})
+            if not test_ids:
+                return JsonResponse({}, status=200)
 
-        # If no report is found, default to ispublish: False
-        if not report:
-            return JsonResponse({"ispublish": False}, status=200)
+            publish_status = {}
 
-        # If a report exists, return the ispublish value
-        is_publish = report.get("ispublish", False)
-        return JsonResponse({"ispublish": is_publish}, status=200)
+            for identifier in test_ids:
+                # Check both collections for the identifier
+                report = mcq_assessments_report_collection.find_one({"contest_id": identifier}, {"ispublish": 1}) or \
+                         coding_report_collection.find_one({"contest_id": identifier}, {"ispublish": 1})
+
+                # If no report is found, default to ispublish: False
+                if not report:
+                    publish_status[identifier] = False
+                else:
+                    # If a report exists, return the ispublish value
+                    is_publish = report.get("ispublish", False)
+                    publish_status[identifier] = is_publish
+
+            return JsonResponse(publish_status, status=200)
+        else:
+            return JsonResponse({"error": "Invalid request method"}, status=405)
 
     except Exception as e:
         return JsonResponse({"error": f"Failed to check publish status: {str(e)}"}, status=500)
