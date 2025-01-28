@@ -782,6 +782,7 @@ def submit_mcq_assessment(request):
             # Calculate percentage and grade
             percentage = (correct_answers / total_questions) * 100 if total_questions > 0 else 0
             grade = "Pass" if percentage >= pass_percentage else "Fail"
+            print("This is the percentage",percentage)
 
             # Record start and finish time
             start_time = datetime.utcnow()
@@ -792,6 +793,7 @@ def submit_mcq_assessment(request):
                 "student_id": student_id,
                 "status": "Completed",
                 "grade": grade,
+                "percentage": percentage,
                 "attended_question": attended_questions,
                 "FullscreenWarning": fullscreen_warning,
                 "NoiseWarning": noise_warning,
@@ -818,6 +820,7 @@ def submit_mcq_assessment(request):
                     if student.get("student_id") == student_id:
                         student["status"] = "Completed"
                         student["grade"] = grade
+                        student["percentage"] = percentage
                         student["attended_question"] = attended_questions
                         student["FullscreenWarning"] = fullscreen_warning
                         student["TabSwitchWarning"] = tabswitch_warning
@@ -837,6 +840,7 @@ def submit_mcq_assessment(request):
                         "$set": {
                             "students": students,
                             "passPercentage": pass_percentage,
+                            "percentage": percentage,
                             "ispublish": ispublish,
                         }
                     }

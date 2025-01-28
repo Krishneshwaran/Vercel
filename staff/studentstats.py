@@ -141,6 +141,9 @@ def mcq_student_results(request, regno):
     # Determine test statuses
     completed_tests = 0
     in_progress_tests = 0
+    total_percentage = 0
+    scored_tests = 0
+
     for contest_id in mcq_contest_ids:
         report = mcq_report_map.get(contest_id)
         if not report:
@@ -152,11 +155,18 @@ def mcq_student_results(request, regno):
             for student in report["students"]:
                 if str(student["student_id"]) == student_id:
                     student_status = student.get("status")
+                    if student_status == "Completed":
+                        completed_tests += 1
+                        # Add percentage to total if available
+                        percentage = student.get("percentage", 0)
+                        total_percentage += percentage
+                        scored_tests += 1
                     break
-            if student_status == "Completed":
-                completed_tests += 1
             else:
                 in_progress_tests += 1
+
+    # Calculate average score
+    average_score = (total_percentage / scored_tests) if scored_tests > 0 else 0
 
     # Response with all assessment details
     assessments = []
@@ -164,6 +174,7 @@ def mcq_student_results(request, regno):
         assessment_overview = mcq.get("assessmentOverview", {})
         problems = []
         contest_status = "Yet to Start"  # Default status for contest
+        percentage = 0  # Default percentage for the contest
 
         # Check the contest status based on the MCQ report
         report = mcq_report_map.get(mcq.get("contestId"))
@@ -171,6 +182,7 @@ def mcq_student_results(request, regno):
             for student in report["students"]:
                 if str(student["student_id"]) == student_id:
                     contest_status = student.get("status", "Pending")  # Get the contest status
+                    percentage = student.get("percentage", 0)  # Get the percentage
                     break
 
         # Handle problems based on contest status
@@ -202,7 +214,8 @@ def mcq_student_results(request, regno):
             "duration": mcq.get("testConfiguration", {}).get("duration", ""),
             "passPercentage": mcq.get("testConfiguration", {}).get("passPercentage", ""),
             "problems": problems,
-            "contestStatus": contest_status  # Added contest status
+            "contestStatus": contest_status,  # Added contest status
+            "percentage": percentage  # Added percentage
         })
 
     response_data = {
@@ -218,7 +231,7 @@ def mcq_student_results(request, regno):
             "total_tests": len(mcq_contest_ids),
             "completed_tests": completed_tests,
             "in_progress_tests": in_progress_tests,
-            "average_score": 0,  # Placeholder for average score logic
+            "average_score": round(average_score, 2),  # Calculate average score
         },
         "assessments": assessments
     }

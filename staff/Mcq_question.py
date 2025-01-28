@@ -277,6 +277,7 @@ def create_test(request):
             questions = data.get("questions", [])
             level = data.get("level", "general").strip()  # Add level field
             tags = data.get("tags", [])  # Add tags field
+            category = data.get("category", "").strip()  # Add category field
 
             # Validate input
             if not test_name:
@@ -290,7 +291,8 @@ def create_test(request):
                 "test_name": test_name,
                 "questions": questions,
                 "level": level,  # Include level in test data
-                "tags": tags  # Include tags in test data
+                "tags": tags,  # Include tags in test data
+                "category": category  # Include category in test data
             }
 
             # Insert the test into MongoDB
@@ -307,6 +309,7 @@ def create_test(request):
             return JsonResponse({"error": f"An unexpected error occurred: {str(e)}"}, status=500)
 
     return JsonResponse({"error": "Only POST requests are allowed."}, status=405)
+
 
 @csrf_exempt
 def update_test(request, test_id):
@@ -486,6 +489,7 @@ def bulk_upload_test(request):
             level = str(data.get("level", "")).strip().lower()
             tags = data.get("tags", [])
             questions = data.get("questions", [])
+            category = data.get("category", "").strip()  # Add category field
 
             # Validate level
             if level not in {"easy", "medium", "hard"}:
@@ -532,7 +536,8 @@ def bulk_upload_test(request):
                 "test_name": test_name,
                 "level": level,
                 "tags": tags,
-                "questions": valid_questions
+                "questions": valid_questions,
+                "category": category  # Include category in test data
             }
 
             # Insert or update the test document in the database

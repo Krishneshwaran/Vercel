@@ -9,4 +9,3 @@ python-dotenv==1.0.1
 django_extensions==3.2.3
 gunicorn==20.1.0
 WeasyPrint
-google-generativeai==0.8.3
