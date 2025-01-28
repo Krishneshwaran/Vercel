@@ -25,7 +25,7 @@ SECRET_KEY = "django-insecure-%1l2^d$2q8xuwtmv-z=_!&529loppvl)ikcs0&ef=safzcn=uw
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['.vercel.app', 'localhost', 'https://portal-sigma-lac.vercel.app/', 'http://20.2.136.143', '127.0.0.1' ]
+ALLOWED_HOSTS = ['.vercel.app', 'localhost', 'https://portal-sigma-lac.vercel.app/', 'http://20.2.136.143', '127.0.0.1', 'https://brave-rock-0d7183d00.4.azurestaticapps.net' ]
 
 
 # Application definition
@@ -85,6 +85,7 @@ CORS_ALLOWED_ORIGINS = [
     "capacitor://localhost",
     "ionic://localhost",
     "https://localhost",
+    'https://brave-rock-0d7183d00.4.azurestaticapps.net',
       # Add the origin of your frontend application
 ]
 # Database
@@ -98,6 +99,7 @@ CSRF_TRUSTED_ORIGINS = [
     "capacitor://localhost",
     "ionic://localhost",
     "https://localhost",
+    'https://brave-rock-0d7183d00.4.azurestaticapps.net/',
 ]
 
 DATABASES = {
@@ -167,5 +169,5 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
 }
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'https://vercel-1bge.onrender.com', 'https://portal-sigma-lac.vercel.app/', "https://localhost", "capacitor://localhost", "ionic://localhost" ]
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'https://vercel-1bge.onrender.com', 'https://portal-sigma-lac.vercel.app/', "https://localhost", "capacitor://localhost", "ionic://localhost", 'https://brave-rock-0d7183d00.4.azurestaticapps.net' ]
 CORS_ALLOW_CREDENTIALS = True
