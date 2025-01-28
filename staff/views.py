@@ -100,15 +100,15 @@ def staff_login(request):
         }, status=200)
 
         # Set secure cookie for JWT
-        Response.set_cookie(
-                key='jwt',
-                value=tokens['jwt'],
-                httponly=True,
-                samesite='None',
-                secure=True,
-                max_age=1 * 24 * 60 * 60
+        response.set_cookie(
+            key='jwt',
+            value=tokens['jwt'],
+            httponly=True,
+            samesite='None',
+            secure=True,
+            max_age=1 * 24 * 60 * 60
                 # domain='http://localhost:8000/' # 1 day in seconds
-            )
+        )
 
         logger.info(f"Login successful for staff: {email}")
         
