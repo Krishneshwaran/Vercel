@@ -6,7 +6,7 @@ import json
 # Backend: Fetch and return all student details
 @csrf_exempt
 def student_profile(request):
-    client = MongoClient('mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/test_portal_db?retryWrites=true&w=majority')
+    client = MongoClient('mongodb+srv://krish:krish@assessment.ar5zh.mongodb.net/')
     db = client['test_portal_db']
     collection = db['students']
 

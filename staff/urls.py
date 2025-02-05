@@ -57,6 +57,6 @@ urlpatterns = [
     path("api/delete-question-from-test/<str:test_id>/<str:question_id>/", delete_question_from_test, name="delete_question_from_test"),
     path('api/bulk-upload-questions-to-test/', bulk_upload_questions_to_test, name='bulk_upload_questions_to_test'),
     path('api/append-question-to-test/', append_question_to_test, name='append_question_to_test'),
-    path('edit_question_in_test/<str:test_id>/<str:question_id>/', edit_question_in_test, name='edit_question_in_test'),
+    path('api/edit_question_in_test/<str:test_id>/<str:question_id>/', edit_question_in_test, name='edit_question_in_test'),
 
 ]

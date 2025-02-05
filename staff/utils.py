@@ -16,7 +16,7 @@ class MongoDBConnection:
     def get_connection(cls):
         if cls._instance is None:
             try:
-                client = pymongo.MongoClient("mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/?retryWrites=true&w=majority&appName=test-portal")
+                client = pymongo.MongoClient("mongodb+srv://krish:krish@assessment.ar5zh.mongodb.net/")
                 client.admin.command("ping")  # Check connection
                 cls._instance = client["test_portal_db"]
             except (ConfigurationError, ServerSelectionTimeoutError) as e:

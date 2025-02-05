@@ -6,7 +6,7 @@ import jwt
 
 
 # MongoDB Setup
-client = pymongo.MongoClient("mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/test_portal_db?retryWrites=true&w=majority")
+client = pymongo.MongoClient("mongodb+srv://krish:krish@assessment.ar5zh.mongodb.net/")
 db = client["test_portal_db"]
 questions_collection = db["MCQ_Questions_Library"]
 mcq_assessment_collection = db["MCQ_Assessment_Data"]

@@ -7,7 +7,7 @@ import os
 from bson.objectid import ObjectId
 from student.utils import *
 # Update the MongoClient to use the provided connection string
-client = MongoClient("mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/test_portal_db?retryWrites=true&w=majority")
+client = MongoClient("mongodb+srv://krish:krish@assessment.ar5zh.mongodb.net/")
 db = client["test_portal_db"]  # Ensure this matches the database name in your connection string
 questions_collection = db['Coding_Questions_Library']
 final_questions_collection = db['finalQuestions']

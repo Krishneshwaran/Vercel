@@ -12,7 +12,7 @@ from django.utils import timezone
 
 
 # Update the MongoClient to use the provided connection string
-client = MongoClient("mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/test_portal_db?retryWrites=true&w=majority")
+client = MongoClient("mongodb+srv://krish:krish@assessment.ar5zh.mongodb.net/")
 db = client["test_portal_db"]  # Ensure this matches the database name in your connection string
 contest_collection = db["Contest_Details"]
 user_info_collection = db["User_info"]

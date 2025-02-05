@@ -27,7 +27,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from datetime import datetime, timezone
 
-client = MongoClient('mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/test_portal_db?retryWrites=true&w=majority')
+client = MongoClient('mongodb+srv://krish:krish@assessment.ar5zh.mongodb.net/')
 db = client['test_portal_db']
 assessments_collection = db['coding_assessments']
 staff_collection = db['staff']
@@ -104,10 +104,9 @@ def staff_login(request):
             key='jwt',
             value=tokens['jwt'],
             httponly=True,
-            samesite='None',
+            samesite='None',      # Ensure the cookie is sent for all routes
             secure=True,
-            max_age=1 * 24 * 60 * 60
-                # domain='http://localhost:8000/' # 1 day in seconds
+            max_age=1 * 24 * 60 * 60  # 1 day expiration
         )
 
         logger.info(f"Login successful for staff: {email}")
@@ -588,9 +587,9 @@ import jwt
 @permission_classes([AllowAny])
 def fetch_mcq_assessments(request):
     """
-    Fetch MCQ assessments created by the staff user (identified via JWT token)
-    and calculate their status as Live, Completed, or Upcoming.
-    Also counts student completion statuses.
+    Fetch MCQ assessments based on staff privileges:
+    - Admin users (admin="true") can see all assessments
+    - Regular staff users can only see their own assessments
     """
     try:
         # Fetch JWT token
@@ -610,15 +609,34 @@ def fetch_mcq_assessments(request):
         if not staff_id:
             raise AuthenticationFailed("Invalid token payload.")
 
-        # Fetch assessments filtered by staffId
+        # Check if staff is admin
+        staff_collection = db['staff']
+        staff_user = staff_collection.find_one({"_id": ObjectId(staff_id)})
+
+        if not staff_user:
+            raise AuthenticationFailed("Staff user not found.")
+
+        # Determine if user is admin
+        is_admin = staff_user.get("admin") == "true"
+
+        # Set up query based on user type
         mcq_collection = db['MCQ_Assessment_Data']
-        assessments_cursor = mcq_collection.find({"staffId": staff_id})
+        if is_admin:
+            # Admin can see all assessments
+            assessments_cursor = mcq_collection.find()
+        else:
+            # Regular staff can only see their assessments
+            assessments_cursor = mcq_collection.find({"staffId": staff_id})
 
         assessments = []
-        current_time = datetime.utcnow().replace(tzinfo=timezone.utc)  # Current UTC time for comparison
+        current_time = datetime.utcnow().replace(tzinfo=timezone.utc)
 
         for assessment in assessments_cursor:
-            # Extract dates (they are Date objects stored as strings)
+            # Add the condition to skip documents without 'visible_to' and 'questions'
+            if "visible_to" not in assessment or "questions" not in assessment.get("testConfiguration", {}):
+                continue
+
+            # Extract dates
             registration_start = assessment.get("assessmentOverview", {}).get("registrationStart")
             registration_end = assessment.get("assessmentOverview", {}).get("registrationEnd")
             visible_users = assessment.get("visible_to", [])
@@ -628,20 +646,20 @@ def fetch_mcq_assessments(request):
             completed_count = 0
             yet_to_start_count = sum(1 for student in student_details if student.get("status", "").lower() == "yet to start")
 
-            # Convert string to datetime if registration_start and registration_end are strings
+            # Convert string to datetime if needed
             if registration_start:
-                if isinstance(registration_start, str):  # Check if it's a string
-                    registration_start = datetime.fromisoformat(registration_start)  # Convert to datetime
+                if isinstance(registration_start, str):
+                    registration_start = datetime.fromisoformat(registration_start)
                 if registration_start.tzinfo is None:
-                    registration_start = registration_start.replace(tzinfo=timezone.utc)  # Make it offset-aware
+                    registration_start = registration_start.replace(tzinfo=timezone.utc)
 
             if registration_end:
-                if isinstance(registration_end, str):  # Check if it's a string
-                    registration_end = datetime.fromisoformat(registration_end)  # Convert to datetime
+                if isinstance(registration_end, str):
+                    registration_end = datetime.fromisoformat(registration_end)
                 if registration_end.tzinfo is None:
-                    registration_end = registration_end.replace(tzinfo=timezone.utc)  # Make it offset-aware
+                    registration_end = registration_end.replace(tzinfo=timezone.utc)
 
-            # Determine status using datetime comparison
+            # Determine status
             if registration_start and registration_end:
                 if current_time < registration_start:
                     status = "Upcoming"
@@ -654,7 +672,7 @@ def fetch_mcq_assessments(request):
             else:
                 status = "Date Unavailable"
 
-            # Fetch completed count from MCQ_Assessment_report collection
+            # Fetch completed count
             contest_id = assessment.get("contestId")
             if contest_id:
                 report_collection = db['MCQ_Assessment_report']
@@ -662,21 +680,21 @@ def fetch_mcq_assessments(request):
                 for report in report_cursor:
                     completed_count += sum(1 for student in report.get("students", []) if student.get("status", "").lower() == "completed")
 
-            # Append assessment details
             assessments.append({
                 "_id": str(assessment.get("_id")),
                 "contestId": assessment.get("contestId"),
                 "name": assessment.get("assessmentOverview", {}).get("name"),
-                "registrationStart": registration_start,  # Keeping Date object
-                "endDate": registration_end,  # Keeping Date object
+                "registrationStart": registration_start,
+                "endDate": registration_end,
                 "type": "MCQ",
                 "category": "Technical",
                 "questions": assessment.get("testConfiguration", {}).get("questions"),
                 "duration": assessment.get("testConfiguration", {}).get("duration"),
-                "status": status,  # Add calculated status
-                "assignedCount": len(visible_users),  # Count of users in 'visible_to'
-                "completedCount": completed_count,  # Count of completed students
-                "yetToStartCount": yet_to_start_count,  # Count of yet to start students
+                "status": status,
+                "assignedCount": len(visible_users),
+                "completedCount": completed_count,
+                "yetToStartCount": yet_to_start_count,
+                "createdBy": assessment.get("staffId"),
             })
 
         return Response({

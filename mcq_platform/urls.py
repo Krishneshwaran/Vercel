@@ -43,4 +43,6 @@ urlpatterns = [
     path('close-session/<str:contest_id>/', close_session, name='close_session'),
     path("delete-question/<str:question_id>/", delete_question, name="delete_question"),
     path('sections/<str:contest_id>/', get_section_questions_for_contest, name='get_section_questions_for_contest'),
+    path('store-certificate/', store_certificate, name='store_certificate'),
+    path('verify-certificate/', verify_certificate, name='verify_certificate'),
 ]

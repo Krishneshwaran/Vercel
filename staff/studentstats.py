@@ -2,7 +2,7 @@ from django.http import JsonResponse
 from pymongo import MongoClient
 
 def studentstats(request, regno):
-    client = MongoClient('mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/test_portal_db?retryWrites=true&w=majority')
+    client = MongoClient('mongodb+srv://krish:krish@assessment.ar5zh.mongodb.net/')
     db = client['test_portal_db']
 
     # Fetch student data
@@ -117,7 +117,7 @@ def studentstats(request, regno):
 
 
 def mcq_student_results(request, regno):
-    client = MongoClient('mongodb+srv://ihub:ihub@test-portal.lcgyx.mongodb.net/test_portal_db?retryWrites=true&w=majority')
+    client = MongoClient('mongodb+srv://krish:krish@assessment.ar5zh.mongodb.net/')
     db = client['test_portal_db']
 
     # Fetch student data
