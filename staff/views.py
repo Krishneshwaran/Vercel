@@ -104,9 +104,8 @@ def staff_login(request):
             key='jwt',
             value=tokens['jwt'],
             httponly=True,
-            samesite='Lax',
-            path="/",      # Ensure the cookie is sent for all routes
-            secure=os.getenv("ENV") == "production",
+            samesite='None',      # Ensure the cookie is sent for all routes
+            secure=True,
             max_age=1 * 24 * 60 * 60  # 1 day expiration
         )
 
