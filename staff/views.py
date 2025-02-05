@@ -104,8 +104,9 @@ def staff_login(request):
             key='jwt',
             value=tokens['jwt'],
             httponly=True,
-            samesite='None',      # Ensure the cookie is sent for all routes
-            secure=True,
+            samesite='Lax',
+            path="/",      # Ensure the cookie is sent for all routes
+            secure=os.getenv("ENV") == "production",
             max_age=1 * 24 * 60 * 60  # 1 day expiration
         )
 
@@ -582,6 +583,23 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import AuthenticationFailed
 import jwt
+from pymongo import MongoClient
+from bson import ObjectId
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+
+# Assuming db is already initialized
+# db = MongoClient().your_database
+
+# Cache for frequently accessed data
+@lru_cache(maxsize=128)
+def get_completed_count(contest_id):
+    report_collection = db['MCQ_Assessment_report']
+    report_cursor = report_collection.find({"contest_id": contest_id}, {"students": 1})
+    completed_count = 0
+    for report in report_cursor:
+        completed_count += sum(1 for student in report.get("students", []) if student.get("status", "").lower() == "completed")
+    return completed_count
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -611,7 +629,7 @@ def fetch_mcq_assessments(request):
 
         # Check if staff is admin
         staff_collection = db['staff']
-        staff_user = staff_collection.find_one({"_id": ObjectId(staff_id)})
+        staff_user = staff_collection.find_one({"_id": ObjectId(staff_id)}, {"admin": 1})
 
         if not staff_user:
             raise AuthenticationFailed("Staff user not found.")
@@ -621,20 +639,21 @@ def fetch_mcq_assessments(request):
 
         # Set up query based on user type
         mcq_collection = db['MCQ_Assessment_Data']
-        if is_admin:
-            # Admin can see all assessments
-            assessments_cursor = mcq_collection.find()
-        else:
-            # Regular staff can only see their assessments
-            assessments_cursor = mcq_collection.find({"staffId": staff_id})
+        query = {} if is_admin else {"staffId": staff_id}
+        projection = {
+            "_id": 1, "contestId": 1, "assessmentOverview.name": 1, "assessmentOverview.registrationStart": 1,
+            "assessmentOverview.registrationEnd": 1, "visible_to": 1, "student_details": 1,
+            "testConfiguration.questions": 1, "testConfiguration.duration": 1, "staffId": 1
+        }
+        assessments_cursor = mcq_collection.find(query, projection).batch_size(100)
 
         assessments = []
         current_time = datetime.utcnow().replace(tzinfo=timezone.utc)
 
-        for assessment in assessments_cursor:
+        def process_assessment(assessment):
             # Add the condition to skip documents without 'visible_to' and 'questions'
             if "visible_to" not in assessment or "questions" not in assessment.get("testConfiguration", {}):
-                continue
+                return None
 
             # Extract dates
             registration_start = assessment.get("assessmentOverview", {}).get("registrationStart")
@@ -643,7 +662,6 @@ def fetch_mcq_assessments(request):
             student_details = assessment.get("student_details", [])
 
             # Count student statuses
-            completed_count = 0
             yet_to_start_count = sum(1 for student in student_details if student.get("status", "").lower() == "yet to start")
 
             # Convert string to datetime if needed
@@ -672,15 +690,11 @@ def fetch_mcq_assessments(request):
             else:
                 status = "Date Unavailable"
 
-            # Fetch completed count
+            # Fetch completed count using cache
             contest_id = assessment.get("contestId")
-            if contest_id:
-                report_collection = db['MCQ_Assessment_report']
-                report_cursor = report_collection.find({"contest_id": contest_id})
-                for report in report_cursor:
-                    completed_count += sum(1 for student in report.get("students", []) if student.get("status", "").lower() == "completed")
+            completed_count = get_completed_count(contest_id) if contest_id else 0
 
-            assessments.append({
+            return {
                 "_id": str(assessment.get("_id")),
                 "contestId": assessment.get("contestId"),
                 "name": assessment.get("assessmentOverview", {}).get("name"),
@@ -695,7 +709,10 @@ def fetch_mcq_assessments(request):
                 "completedCount": completed_count,
                 "yetToStartCount": yet_to_start_count,
                 "createdBy": assessment.get("staffId"),
-            })
+            }
+
+        with ThreadPoolExecutor() as executor:
+            assessments = list(filter(None, executor.map(process_assessment, assessments_cursor)))
 
         return Response({
             "assessments": assessments,
@@ -704,6 +721,8 @@ def fetch_mcq_assessments(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
+
 
 
 @api_view(["GET", "PUT"])  # Allow both GET and PUT requests
