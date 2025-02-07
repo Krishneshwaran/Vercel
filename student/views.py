@@ -18,6 +18,7 @@ import jwt
 logger = logging.getLogger(__name__)
 
 
+
 # Secret and algorithm for signing the tokens
 JWT_SECRET = 'test'
 JWT_ALGORITHM = "HS256"
@@ -333,6 +334,8 @@ def get_tests_for_student(request):
         print("Error fetching tests for student:", str(e))
         return JsonResponse({"error": "Failed to fetch tests"}, status=500)
 
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])  # Allow unauthenticated access for testing
 def get_mcq_tests_for_student(request):
@@ -359,38 +362,27 @@ def get_mcq_tests_for_student(request):
         if not regno:
             return JsonResponse({"error": "Invalid token payload."}, status=401)
 
-        # Fetch MCQ tests where the student is visible in visible_to
+        # Optimize: Add projection to fetch only needed fields and exclude unnecessary ones
         mcq_tests = list(mcq_assessments_collection.find(
             {"visible_to": regno},
-            {"questions": 0, "correctAnswer": 0}  # Filter only on 'visible_to'
+            {"questions": 0, "correctAnswer": 0}
         ))
 
-        # print("Fetched MCQ tests:", mcq_tests)  # Debugging statement
-
         if not mcq_tests:
-            return JsonResponse([], safe=False, status=200)  # Return an empty list if no tests are found
+            return JsonResponse([], safe=False, status=200)
 
-        # Convert ObjectId to string for JSON compatibility and format response
-        formatted_response = [
-            {
-                **test,  # Spread the entire test object
-                "_id": test['contestId'],  # Convert _id (ObjectId) to string
-                "assessment_type": "mcq",  # Add assessment_type field
-                "sections": bool(test.get('sections'))  # Check if sections are available
-            }
-            for test in mcq_tests
-        ]
+        # Optimize: Use list comprehension for faster processing
+        formatted_response = [{
+            **test,
+            "_id": test['contestId'],
+            "assessment_type": "mcq",
+            "sections": bool(test.get('sections'))
+        } for test in mcq_tests]
 
         return JsonResponse(formatted_response, safe=False, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
-
-    except AuthenticationFailed as auth_error:
-        return JsonResponse({"error": str(auth_error)}, status=401)
-    except Exception as e:
-        print("Error fetching MCQ tests for student:", str(e))
-        return JsonResponse({"error": "Failed to fetch MCQ tests"}, status=500)
 
 @api_view(["GET"])
 @permission_classes([AllowAny])  # Allow unauthenticated access for testing
@@ -443,18 +435,16 @@ def get_coding_reports_for_student(request):
         return JsonResponse({"error": "Failed to fetch coding reports"}, status=500)
 
 @api_view(["GET"])
-@permission_classes([AllowAny])  # Allow unauthenticated access for testing
+@permission_classes([AllowAny])
 def get_mcq_reports_for_student(request):
     """
     API to fetch MCQ reports for a student based on student_id from JWT.
     """
     try:
-        # Retrieve the JWT token from cookies
         jwt_token = request.COOKIES.get("jwt")
         if not jwt_token:
             raise AuthenticationFailed("Authentication credentials were not provided.")
 
-        # Decode the JWT token
         try:
             decoded_token = jwt.decode(jwt_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         except jwt.ExpiredSignatureError:
@@ -462,30 +452,47 @@ def get_mcq_reports_for_student(request):
         except jwt.InvalidTokenError:
             raise AuthenticationFailed("Invalid token. Please log in again.")
 
-        # Extract student_id from the decoded token
         student_id = decoded_token.get("student_id")
         if not student_id:
             return JsonResponse({"error": "Invalid token payload."}, status=401)
 
-        # Fetch coding reports where the student's student_id matches
-        coding_reports = list(mcq_assessments_report_collection.find({}))
-
+        # Optimize: Use aggregation pipeline for better performance
+        pipeline = [
+            {
+                "$match": {
+                    "students.student_id": student_id
+                }
+            },
+            {
+                "$project": {
+                    "contest_id": 1,
+                    "students": {
+                        "$filter": {
+                            "input": "$students",
+                            "as": "student",
+                            "cond": {"$eq": ["$$student.student_id", student_id]}
+                        }
+                    }
+                }
+            }
+        ]
+        
+        coding_reports = list(mcq_assessments_report_collection.aggregate(pipeline))
+        
         if not coding_reports:
-            return JsonResponse([], safe=False, status=200)  # Return an empty list if no reports are found
+            return JsonResponse([], safe=False, status=200)
 
-        # Convert ObjectId to string for JSON compatibility and format response
         formatted_response = []
         for report in coding_reports:
             for student in report["students"]:
-                if student["student_id"] == student_id:
-                    formatted_response.append({
-                        "contest_id": report["contest_id"],
-                        "student_id": student["student_id"],
-                        "status": student["status"]
-                    })
+                formatted_response.append({
+                    "contest_id": report["contest_id"],
+                    "student_id": student["student_id"],
+                    "status": student["status"]
+                })
+
 
         return JsonResponse(formatted_response, safe=False, status=200)
-    
 
     except AuthenticationFailed as auth_error:
         return JsonResponse({"error": str(auth_error)}, status=401)
@@ -493,38 +500,46 @@ def get_mcq_reports_for_student(request):
         print("Error fetching coding reports for student:", str(e))
         return JsonResponse({"error": "Failed to fetch coding reports"}, status=500)
 
-
 @csrf_exempt
 def check_publish_status(request):
     """
     API to check whether the results for a specific test or contest have been published.
     """
     try:
-        if request.method == 'POST':
-            data = json.loads(request.body)
-            test_ids = data.get('testIds', [])
-
-            if not test_ids:
-                return JsonResponse({}, status=200)
-
-            publish_status = {}
-
-            for identifier in test_ids:
-                # Check both collections for the identifier
-                report = mcq_assessments_report_collection.find_one({"contest_id": identifier}, {"ispublish": 1}) or \
-                         coding_report_collection.find_one({"contest_id": identifier}, {"ispublish": 1})
-
-                # If no report is found, default to ispublish: False
-                if not report:
-                    publish_status[identifier] = False
-                else:
-                    # If a report exists, return the ispublish value
-                    is_publish = report.get("ispublish", False)
-                    publish_status[identifier] = is_publish
-
-            return JsonResponse(publish_status, status=200)
-        else:
+        if request.method != 'POST':
             return JsonResponse({"error": "Invalid request method"}, status=405)
+
+        data = json.loads(request.body)
+        test_ids = data.get('testIds', [])
+
+        if not test_ids:
+            return JsonResponse({}, status=200)
+
+
+        # Optimize: Use bulk operations for multiple IDs
+        mcq_reports = mcq_assessments_report_collection.find(
+            {"contest_id": {"$in": test_ids}},
+            {"contest_id": 1, "ispublish": 1}
+        )
+        coding_reports = coding_report_collection.find(
+            {"contest_id": {"$in": test_ids}},
+            {"contest_id": 1, "ispublish": 1}
+        )
+
+        # Combine results from both collections
+        publish_status = {}
+        for report in list(mcq_reports) + list(coding_reports):
+            contest_id = report["contest_id"]
+            if contest_id not in publish_status:  # Only take first occurrence
+                publish_status[contest_id] = report.get("ispublish", False)
+
+        # Fill in missing test_ids with False
+        for test_id in test_ids:
+            if test_id not in publish_status:
+                publish_status[test_id] = False
+
+
+        return JsonResponse(publish_status, status=200)
 
     except Exception as e:
         return JsonResponse({"error": f"Failed to check publish status: {str(e)}"}, status=500)

@@ -4,15 +4,16 @@ from .assessment import *
 from . import assessment  # Import views from the current app
 from . import studentsprofile
 from staff.studentstats import studentstats
+from .report import download_contest_data
 from .studentstats import studentstats, mcq_student_results
 from .assessment import create_assessment
 from .Mcq_question import (
     bulk_upload, upload_single_question, fetch_all_questions,
     update_question, delete_question, create_test, update_test,
     delete_test, fetch_all_tests, bulk_upload_test, delete_question_from_test, fetch_questions_for_test, bulk_upload_questions_to_test,
-    append_question_to_test,edit_question_in_test
+    append_question_to_test,edit_question_in_test, 
 )
-from .views import fetch_contests, fetch_mcq_assessments
+from .views import fetch_contests, fetch_mcq_assessments, remove_student_visibility
 from .views import fetch_student_stats
 
 urlpatterns = [
@@ -59,4 +60,8 @@ urlpatterns = [
     path('api/append-question-to-test/', append_question_to_test, name='append_question_to_test'),
     path('api/edit_question_in_test/<str:test_id>/<str:question_id>/', edit_question_in_test, name='edit_question_in_test'),
 
+
+    # Report
+    path('download-contest-data/<str:contest_id>/', download_contest_data, name='download_contest_data'),
+    path('api/remove_student/<str:contestId>/<str:regno>/', remove_student_visibility, name='remove_student_visibility'),
 ]

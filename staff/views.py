@@ -104,7 +104,7 @@ def staff_login(request):
             key='jwt',
             value=tokens['jwt'],
             httponly=True,
-            samesite='None',      # Ensure the cookie is sent for all routes
+            samesite='None',    # Ensure the cookie is sent for all routes
             secure=True,
             max_age=1 * 24 * 60 * 60  # 1 day expiration
         )
@@ -577,9 +577,9 @@ def fetch_contests(request):
         return Response({"error": "Something went wrong. Please try again later."}, status=500)
 
 from datetime import datetime, timezone
+import jwt
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
 from rest_framework.exceptions import AuthenticationFailed
 import jwt
 from pymongo import MongoClient
@@ -723,7 +723,6 @@ def fetch_mcq_assessments(request):
 
 
 
-
 @api_view(["GET", "PUT"])  # Allow both GET and PUT requests
 @permission_classes([AllowAny])
 @authentication_classes([])
@@ -797,3 +796,29 @@ def get_staff_profile(request):
         print(f"Unexpected error: {e}")
         return Response({"error": "An unexpected error occurred"}, status=500)
 
+
+@api_view(["DELETE"])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def remove_student_visibility(request, contestId, regno):
+    try:
+        # Fetch the MCQ assessment details using the contestId
+        mcq_details = mcq_collection.find_one({"contestId": contestId})
+        if not mcq_details:
+            print(contestId)
+            return Response({"error": "MCQ Assessment not found"}, status=404)
+
+        # Check if the student is in the visible_to array
+        if regno not in mcq_details.get("visible_to", []):
+            return Response({"error": "Student not found in the assessment"}, status=404)
+
+        # Remove the student from the visible_to array
+        mcq_collection.update_one(
+            {"contestId": contestId},
+            {"$pull": {"visible_to": regno}}
+        )
+
+        return Response({"message": "Student removed successfully"}, status=200)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
