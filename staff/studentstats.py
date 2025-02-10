@@ -131,20 +131,25 @@ def mcq_student_results(request, regno):
     mcq_assessments = db.MCQ_Assessment_Data.find({"visible_to": regno}, {"_id": 0})
     mcq_list = list(mcq_assessments)
 
-    # Fetch all MCQ contest IDs visible to the student
-    mcq_contest_ids = [mcq.get("contestId") for mcq in mcq_list if mcq.get("contestId")]
+    # Create a set of visible contest IDs for O(1) lookup
+    visible_contest_ids = {mcq.get("contestId") for mcq in mcq_list if mcq.get("contestId")}
 
     # Fetch MCQ report for contests relevant to the student
-    mcq_reports = db.MCQ_Assessment_report.find({"contest_id": {"$in": mcq_contest_ids}})
-    mcq_report_map = {report["contest_id"]: report for report in mcq_reports}
+    mcq_reports = db.MCQ_Assessment_report.find({"contest_id": {"$in": list(visible_contest_ids)}})
+    # Only include reports for visible contests
+    mcq_report_map = {
+        report["contest_id"]: report 
+        for report in mcq_reports 
+        if report["contest_id"] in visible_contest_ids
+    }
 
-    # Determine test statuses
+    # Rest of the code remains the same, but now working with filtered mcq_report_map
     completed_tests = 0
     in_progress_tests = 0
     total_percentage = 0
     scored_tests = 0
 
-    for contest_id in mcq_contest_ids:
+    for contest_id in visible_contest_ids:
         report = mcq_report_map.get(contest_id)
         if not report:
             # No report means the test is in progress
@@ -171,13 +176,25 @@ def mcq_student_results(request, regno):
     # Response with all assessment details
     assessments = []
     for mcq in mcq_list:
+        contest_id = mcq.get("contestId")
+        # Skip if contest_id is missing or empty
+        if not contest_id:
+            continue
+            
         assessment_overview = mcq.get("assessmentOverview", {})
+        # Skip if required fields are missing or empty
+        if not (assessment_overview.get("name") and 
+                assessment_overview.get("description") and
+                assessment_overview.get("registrationStart") and
+                assessment_overview.get("registrationEnd")):
+            continue
+
         problems = []
         contest_status = "Yet to Start"  # Default status for contest
         percentage = 0  # Default percentage for the contest
 
         # Check the contest status based on the MCQ report
-        report = mcq_report_map.get(mcq.get("contestId"))
+        report = mcq_report_map.get(contest_id)
         if report:
             for student in report["students"]:
                 if str(student["student_id"]) == student_id:
@@ -204,7 +221,7 @@ def mcq_student_results(request, regno):
 
         # Add assessment details for this MCQ contest
         assessments.append({
-            "contestId": mcq.get("contestId", ""),
+            "contestId": contest_id,
             "name": assessment_overview.get("name", ""),
             "description": assessment_overview.get("description", ""),
             "registrationStart": assessment_overview.get("registrationStart", ""),
@@ -214,13 +231,13 @@ def mcq_student_results(request, regno):
             "duration": mcq.get("testConfiguration", {}).get("duration", ""),
             "passPercentage": mcq.get("testConfiguration", {}).get("passPercentage", ""),
             "problems": problems,
-            "contestStatus": contest_status,  # Added contest status
-            "percentage": percentage  # Added percentage
+            "contestStatus": contest_status,
+            "percentage": percentage
         })
 
     response_data = {
         "student": {
-            "student_id": student_id,  # Include student_id
+            "student_id": student_id,
             "name": student_data.get("name", ""),
             "email": student_data.get("email", ""),
             "collegename": student_data.get("collegename", ""),
@@ -228,10 +245,10 @@ def mcq_student_results(request, regno):
             "regno": regno,
         },
         "performance": {
-            "total_tests": len(mcq_contest_ids),
+            "total_tests": len(visible_contest_ids),
             "completed_tests": completed_tests,
             "in_progress_tests": in_progress_tests,
-            "average_score": round(average_score, 2),  # Calculate average score
+            "average_score": round(average_score, 2),
         },
         "assessments": assessments
     }
