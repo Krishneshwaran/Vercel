@@ -117,14 +117,16 @@ def upload_single_question(request):
             tags = data.get("tags", [])  # Default to an empty list if no tags provided
 
             # Validate input
-            if not all([question, option1, option2, option3, option4, correctAnswer]):
+            options = [option1, option2, option3, option4]
+            non_empty_options = [option for option in options if option]
+
+            if not all([question, correctAnswer]) or len(non_empty_options) < 2:
                 return JsonResponse({
-                    "error": "Missing required fields. Please provide all question details."
+                    "error": "Missing required fields. Please provide a question, at least two options, and a correct answer."
                 }, status=400)
 
             # Validate answer is one of the options
-            options = [option1, option2, option3, option4]
-            if correctAnswer not in options:
+            if correctAnswer not in non_empty_options:
                 return JsonResponse({
                     "error": "Invalid answer. The answer must be one of the provided options."
                 }, status=400)
@@ -133,7 +135,7 @@ def upload_single_question(request):
             question_data = {
                 "question_id": str(uuid.uuid4()),
                 "question": question,
-                "options": options,
+                "options": non_empty_options,
                 "correctAnswer": correctAnswer,  # Use correctAnswer
                 "level": level,
                 "tags": tags
@@ -159,6 +161,7 @@ def upload_single_question(request):
     return JsonResponse({
         "error": "Only POST requests are allowed."
     }, status=405)
+
 
 def fetch_all_questions(request):
     try:
@@ -311,6 +314,7 @@ def create_test(request):
     return JsonResponse({"error": "Only POST requests are allowed."}, status=405)
 
 
+
 @csrf_exempt
 def update_test(request, test_id):
     if request.method == "PUT":
@@ -323,21 +327,25 @@ def update_test(request, test_id):
 
             # Extract and clean fields
             test_name = data.get("test_name", "").strip()
-            level = data.get("level", "general").strip()  # Add level field
-            tags = data.get("tags", [])  # Add tags field
+            level = data.get("level", "general").strip()
+            tags = data.get("tags", [])
+            category = data.get("category", "").strip()  # Add category field
 
             # Input validation
             errors = []
             if not test_name:
                 errors.append("Test name cannot be empty.")
+            if not category:
+                errors.append("Category cannot be empty.")
             if errors:
                 return JsonResponse({"error": errors}, status=400)
 
             # Build the update payload
             update_data = {
                 "test_name": test_name,
-                "level": level,  # Include level in update data
-                "tags": tags  # Include tags in update data
+                "level": level,
+                "tags": tags,
+                "category": category  # Include category in update data
             }
 
             # Execute the update query using test_id
@@ -355,6 +363,7 @@ def update_test(request, test_id):
             return JsonResponse({"error": f"Unexpected error: {str(e)}"}, status=500)
 
     return JsonResponse({"error": "Only PUT requests are allowed"}, status=405)
+
 
 @csrf_exempt
 def delete_test(request, test_id):

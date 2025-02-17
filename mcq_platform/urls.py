@@ -35,6 +35,7 @@ urlpatterns = [
     path("bulk-upload/",bulk_upload_questions,name="bulkUpload"),
     path("api/save-selected-questions/", save_selected_questions, name="save_selected_question"),
     path("student-report/<str:contestId>/<str:regno>/", get_student_report, name="student_report"),
+    path("get-score/<str:contestId>/<str:regno>/", get_correct_answer, name="get_score"),
     path("publish-result/<str:contestId>/", publish_result, name="publish_result"),
     path("publish_mcq/", publish_mcq,name = "publish_mcq"),
     path('api/generate-questions/', generate_questions, name='generate_questions'),
@@ -44,5 +45,10 @@ urlpatterns = [
     path("delete-question/<str:question_id>/", delete_question, name="delete_question"),
     path('sections/<str:contest_id>/', get_section_questions_for_contest, name='get_section_questions_for_contest'),
     path('store-certificate/', store_certificate, name='store_certificate'),
-    path('verify-certificate/', verify_certificate, name='verify_certificate'),
+
+    path("reassign/<str:contest_id>/<str:student_id>/", reassign, name="reassign"),
+
+    path('verify-certificate/<str:unique_id>/', verify_certificate, name='verify_certificate'),
+    path('get_cert_date/', get_test_date, name='get_date'),
+
 ]

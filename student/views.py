@@ -365,7 +365,7 @@ def get_mcq_tests_for_student(request):
         # Optimize: Add projection to fetch only needed fields and exclude unnecessary ones
         mcq_tests = list(mcq_assessments_collection.find(
             {"visible_to": regno},
-            {"questions": 0, "correctAnswer": 0}
+            {"questions": 0, "correctAnswer": 0 }
         ))
 
         if not mcq_tests:
@@ -543,3 +543,39 @@ def check_publish_status(request):
 
     except Exception as e:
         return JsonResponse({"error": f"Failed to check publish status: {str(e)}"}, status=500)
+    
+@csrf_exempt
+def student_section_details(request, contest_id):
+    if request.method == "GET":
+        # Fetch contest details by contestId
+        contest = mcq_assessments_collection.find_one(
+            {"contestId": contest_id},
+            {"sections": 1, "assessmentOverview.guidelines": 1, "_id": 0}
+        )
+
+        if not contest:
+            return JsonResponse({"error": "Contest not found"}, status=404)
+
+        sections = contest.get("sections", [])
+        guidelines = contest.get("assessmentOverview", {}).get("guidelines", "")
+
+        # Calculate total duration
+        total_duration = sum(section.get("sectionDuration", 0) for section in sections)
+
+        # Format the response with section name, number of questions, and duration
+        section_data = [
+            {
+                "name": section["sectionName"],
+                "numQuestions": section["numQuestions"],
+                "duration": section.get("sectionDuration", 0),
+            }
+            for section in sections
+        ]
+
+        return JsonResponse({
+            "sections": section_data,
+            "guidelines": guidelines,
+            "totalDuration": total_duration  # Include total duration in response
+        }, status=200)
+
+    return JsonResponse({"error": "Invalid request method"}, status=400)

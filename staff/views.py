@@ -101,13 +101,12 @@ def staff_login(request):
 
         # Set secure cookie for JWT
         response.set_cookie(
-                key='jwt',
-                value=tokens['jwt'],
-                httponly=True,
-                samesite='None',
-                secure=True,
-                max_age=1 * 24 * 60 * 60
-                # domain='http://localhost:8000/' # 1 day in seconds
+            key='jwt',
+            value=tokens['jwt'],
+            httponly=True,
+            samesite='None',     # Ensure the cookie is sent for all routes
+            secure=True,
+            max_age=1 * 24 * 60 * 60  # 1 day expiration
         )
 
         logger.info(f"Login successful for staff: {email}")
@@ -806,20 +805,125 @@ def remove_student_visibility(request, contestId, regno):
         # Fetch the MCQ assessment details using the contestId
         mcq_details = mcq_collection.find_one({"contestId": contestId})
         if not mcq_details:
-            print(contestId)
             return Response({"error": "MCQ Assessment not found"}, status=404)
 
-        # Check if the student is in the visible_to array
-        if regno not in mcq_details.get("visible_to", []):
+        # Check if the student is in the visible_to array or student_details
+        if regno not in mcq_details.get("visible_to", []) and \
+           not any(student["regno"] == regno for student in mcq_details.get("student_details", [])):
             return Response({"error": "Student not found in the assessment"}, status=404)
 
-        # Remove the student from the visible_to array
+        # Remove the student from both `visible_to` and `student_details`
         mcq_collection.update_one(
             {"contestId": contestId},
-            {"$pull": {"visible_to": regno}}
+            {
+                "$pull": {
+                    "visible_to": regno,
+                    "student_details": {"regno": regno}  # Removes student from `student_details`
+                }
+            }
         )
 
         return Response({"message": "Student removed successfully"}, status=200)
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
+    
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def mcq_draft_data(request):
+    """
+    Fetches MCQ assessments that are configured but not fully created.
+    - Only returns assessments where `questions` is empty AND `visible_to` is empty.
+    - Filters based on `staffId` extracted from the JWT token.
+    """
+    try:
+        # Extract JWT token from cookies
+        jwt_token = request.COOKIES.get("jwt")
+        if not jwt_token:
+            raise AuthenticationFailed("Authentication credentials were not provided.")
+
+        # Decode JWT token
+        try:
+            decoded_token = jwt.decode(jwt_token, 'test', algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            raise AuthenticationFailed("Access token has expired. Please log in again.")
+        except jwt.InvalidTokenError:
+            raise AuthenticationFailed("Invalid token. Please log in again.")
+
+        # Get the staff_id from the decoded token
+        staff_id = decoded_token.get("staff_user")
+        if not staff_id:
+            raise AuthenticationFailed("Invalid token payload.")
+
+        print(f"Fetching draft assessments for staff_id: {staff_id}")
+
+        # Query MongoDB: Fetch only draft assessments (no questions and no visible_to)
+        draft_assessments_cursor = mcq_collection.find({
+            "staffId": staff_id,
+            "$or": [
+                {"questions": {"$exists": False}},  # No questions field
+                {"questions": []},  # Empty questions list
+                {"visible_to": {"$exists": False}},  # No visible_to field
+                {"visible_to": []},  # Empty visible_to list
+                # {"assesmentOverview": {"$exists": False}},
+                # {"assesmentOverview": []},
+                # {"testConfiguration":{"$exists": False}},
+                # {"testConfiguration": []},
+            ]
+        })
+
+        # Process and structure the response
+        draft_assessments = []
+        for assessment in draft_assessments_cursor:
+            draft_assessments.append({
+                "_id": str(assessment.get("_id", "")),
+                "contestId": assessment.get("contestId", ""),
+                "name": assessment.get("assessmentOverview", {}).get("name", "Unnamed Assessment"),
+                "description": assessment.get("assessmentOverview", {}).get("description", ""),
+                "starttime": assessment.get("assessmentOverview", {}).get("registrationStart", "Null"),
+                "endtime": assessment.get("assessmentOverview", {}).get("registrationEnd", "Null"),
+                "guidelines": assessment.get("assessmentOverview", {}).get("guidelines", ""),
+                "totalMarks": assessment.get("testConfiguration", {}).get("totalMarks", ""),
+                "questionsCount": assessment.get("testConfiguration", {}).get("questions", ""),
+                "duration": assessment.get("testConfiguration", {}).get("duration", {}),
+                "status": "Draft"  # Since these are drafts, mark status as 'Draft'
+            })
+
+        return Response({
+            "draftAssessments": draft_assessments,
+            "total": len(draft_assessments)
+        })
+
+    except jwt.ExpiredSignatureError:
+        return Response({"error": "Token has expired"}, status=401)
+    except AuthenticationFailed:
+        return Response({"error": "Invalid token"}, status=401)
+    except Exception as e:
+        logger.error(f"Error fetching draft MCQ assessments: {e}")
+        return Response({"error": "Something went wrong. Please try again later."}, status=500)
+    
+@api_view(['DELETE'])
+@permission_classes([AllowAny])
+def delete_drafts(request):
+    """
+    Deletes multiple draft MCQ assessments based on a list of contestIds.
+    """
+    try:
+        contest_ids = request.data.get("contestIds", [])
+
+        if not contest_ids or not isinstance(contest_ids, list):
+            return Response({"error": "Invalid contestIds format. Expected a list."}, status=400)
+
+        # Find and delete matching draft assessments in MongoDB
+        result = mcq_collection.delete_many({"contestId": {"$in": contest_ids}})
+
+        if result.deleted_count == 0:
+            return Response({"error": "No matching assessments found"}, status=404)
+
+        return Response({"message": f"Deleted {result.deleted_count} draft assessments successfully"}, status=200)
+
+    except Exception as e:
+        logger.error(f"Error deleting draft assessments: {e}")
+        return Response({"error": "Something went wrong. Please try again later."}, status=500)

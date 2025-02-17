@@ -13,7 +13,7 @@ from .Mcq_question import (
     delete_test, fetch_all_tests, bulk_upload_test, delete_question_from_test, fetch_questions_for_test, bulk_upload_questions_to_test,
     append_question_to_test,edit_question_in_test, 
 )
-from .views import fetch_contests, fetch_mcq_assessments, remove_student_visibility
+from .views import fetch_contests, fetch_mcq_assessments, remove_student_visibility, mcq_draft_data, delete_drafts
 from .views import fetch_student_stats
 
 urlpatterns = [
@@ -33,6 +33,8 @@ urlpatterns = [
     # Dashboard
     path('contests/', fetch_contests, name='fetch_contests'),
     path('mcq/', fetch_mcq_assessments, name='fetch_mcq'),
+    path('draft/', mcq_draft_data, name='draft_data'),
+    path('delete-drafts/',delete_drafts, name='delete-draft'),
     # Assessment API
     path('api/create-assessment/', create_assessment, name='create_assessment'),
 

@@ -143,7 +143,7 @@ def mcq_student_results(request, regno):
         if report["contest_id"] in visible_contest_ids
     }
 
-    # Rest of the code remains the same, but now working with filtered mcq_report_map
+    # Initialize counters
     completed_tests = 0
     in_progress_tests = 0
     total_percentage = 0
@@ -151,24 +151,27 @@ def mcq_student_results(request, regno):
 
     for contest_id in visible_contest_ids:
         report = mcq_report_map.get(contest_id)
-        if not report:
-            # No report means the test is in progress
+        if not report or "students" not in report:  # Check if report exists and has students field
+            # No report or no students field means the test is in progress
             in_progress_tests += 1
-        else:
-            # Find the status for the current student
-            student_status = None
-            for student in report["students"]:
-                if str(student["student_id"]) == student_id:
-                    student_status = student.get("status")
-                    if student_status == "Completed":
-                        completed_tests += 1
-                        # Add percentage to total if available
-                        percentage = student.get("percentage", 0)
-                        total_percentage += percentage
-                        scored_tests += 1
-                    break
-            else:
-                in_progress_tests += 1
+            continue
+
+        # Find the status for the current student
+        student_found = False
+        for student in report["students"]:
+            if str(student.get("student_id")) == student_id:
+                student_found = True
+                student_status = student.get("status")
+                if student_status == "Completed":
+                    completed_tests += 1
+                    # Add percentage to total if available
+                    percentage = student.get("percentage", 0)
+                    total_percentage += percentage
+                    scored_tests += 1
+                break
+        
+        if not student_found:
+            in_progress_tests += 1
 
     # Calculate average score
     average_score = (total_percentage / scored_tests) if scored_tests > 0 else 0
@@ -195,17 +198,17 @@ def mcq_student_results(request, regno):
 
         # Check the contest status based on the MCQ report
         report = mcq_report_map.get(contest_id)
-        if report:
+        if report and "students" in report:  # Add check for students key
             for student in report["students"]:
-                if str(student["student_id"]) == student_id:
+                if str(student.get("student_id")) == student_id:
                     contest_status = student.get("status", "Pending")  # Get the contest status
                     percentage = student.get("percentage", 0)  # Get the percentage
                     break
 
         # Handle problems based on contest status
-        if contest_status == "Completed":
+        if contest_status == "Completed" and report and "students" in report:  # Add check for students key
             for student in report["students"]:
-                if str(student["student_id"]) == student_id:
+                if str(student.get("student_id")) == student_id:
                     attended_questions = student.get("attended_question", [])
                     for attended_problem in attended_questions:
                         problems.append({

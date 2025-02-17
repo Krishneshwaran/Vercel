@@ -58,7 +58,42 @@ def start_contest(request):
             return JsonResponse({"error": str(e)}, status=500)
     return JsonResponse({"error": "Invalid request method"}, status=400)
 
+@csrf_exempt
+def get_test_date(request):
+    if request.method == "GET":
+        student_id = request.GET.get("student_id")
+        contest_id = request.GET.get("contest_id")
+        collection_result = db["MCQ_Assessment_report"]
 
+        if not student_id or not contest_id:
+            return JsonResponse({"error": "Missing student_id or contest_id"}, status=400)
+
+        # Find the contest document with the matching contest_id
+        contest = collection_result.find_one({"contest_id": contest_id})
+        if not contest:
+            return JsonResponse({"error": "Contest not found"}, status=404)
+
+        # Find the student record with completed status
+        student_data = next(
+            (student for student in contest["students"] 
+             if student["student_id"] == student_id and student["status"].lower() == "completed"),
+            None
+        )
+
+        if not student_data:
+            return JsonResponse({"error": "Student not found or contest not completed"}, status=404)
+
+        # Get the finish time
+        finish_time = student_data.get("finishTime", None)
+
+        if isinstance(finish_time, str):  # If it's a string, convert it to datetime
+            finish_time = datetime.strptime(finish_time, "%Y-%m-%dT%H:%M:%S.%fZ")
+        elif not isinstance(finish_time, datetime):  # If it's in an unexpected format
+            return JsonResponse({"error": "Invalid finish time format"}, status=500)
+
+        return JsonResponse({"finish_time": finish_time.isoformat()})
+
+    return JsonResponse({"error": "Invalid request method"}, status=405)
 
 def generate_token(contest_id):
     payload = {
@@ -753,6 +788,23 @@ def submit_mcq_assessment(request):
             if not student_id:
                 return JsonResponse({"error": "Student ID is required"}, status=400)
 
+            # Check if student has already completed this assessment
+            existing_report = mcq_report_collection.find_one({
+                "contest_id": contest_id,
+                "students": {
+                    "$elemMatch": {
+                        "student_id": student_id,
+                        "status": "Completed"
+                    }
+                }
+            })
+
+            if existing_report:
+                return JsonResponse({
+                    "error": "You have already submitted this assessment",
+                    "status": "Already_Submitted"
+                }, status=400)
+
             # Fetch assessment from the database
             assessment = collection.find_one({"contestId": contest_id})
             if not assessment:
@@ -813,7 +865,6 @@ def submit_mcq_assessment(request):
             # Calculate percentage and grade
             percentage = (correct_answers / total_questions) * 100 if total_questions > 0 else 0
             grade = "Pass" if percentage >= pass_percentage else "Fail"
-            print("This is the percentage",percentage)
 
             # Record start and finish time
             start_time = datetime.utcnow()
@@ -847,21 +898,14 @@ def submit_mcq_assessment(request):
             else:
                 # Check if the student already exists in the students array
                 students = report.get("students", [])
-                for student in students:
+                student_found = False
+                for i, student in enumerate(students):
                     if student.get("student_id") == student_id:
-                        student["status"] = "Completed"
-                        student["grade"] = grade
-                        student["percentage"] = percentage
-                        student["attended_question"] = attended_questions
-                        student["FullscreenWarning"] = fullscreen_warning
-                        student["TabSwitchWarning"] = tabswitch_warning
-                        student["NoiseWarning"] = noise_warning
-                        student["FaceWarning"] = face_warning
-                        student["startTime"] = student.get("startTime", start_time)
-                        student["finishTime"] = finish_time
+                        students[i] = student_data  # Replace the existing student data
+                        student_found = True
                         break
-                else:
-                    # Add a new student entry if not found
+                
+                if not student_found:
                     students.append(student_data)
 
                 # Update the report with modified students array
@@ -889,6 +933,44 @@ def submit_mcq_assessment(request):
             return JsonResponse({"error": f"An error occurred: {str(e)}"}, status=500)
 
     return JsonResponse({"error": "Invalid request method"}, status=405)
+
+@csrf_exempt
+def get_correct_answer(request, contestId, regno):
+    if request.method == "GET":
+        try:
+            # Fetch the contest report
+            report = mcq_report_collection.find_one({"contest_id": contestId})
+            if not report:
+                return JsonResponse({"error": f"No report found for contest_id: {contestId}"}, status=404)
+
+            # Find the student in the report
+            student_report = next(
+                (student for student in report.get("students", []) if student["student_id"] == regno), None
+            )
+            if not student_report:
+                return JsonResponse({"error": f"No report found for student with regno: {regno}"}, status=404)
+
+            # Fetch the contest details to get the name
+            contest_details = collection.find_one({"contestId": contestId})
+            if not contest_details:
+                return JsonResponse({"error": f"No contest details found for contest_id: {contestId}"}, status=404)
+
+            contest_name = contest_details.get("assessmentOverview", {}).get("name", "Unknown Contest")
+
+            # Calculate the number of correct answers
+            correct_answers = sum(
+                1 for q in student_report.get("attended_question", []) if q.get("student_answer") == q.get("correct_answer")
+            )
+            formatted_report = {
+                "correct_answers": correct_answers,
+            }
+
+            return JsonResponse(formatted_report, status=200, safe=False)
+
+        except Exception as e:
+            return JsonResponse({"error": f"Failed to fetch student report: {str(e)}"}, status=500)
+    else:
+        return JsonResponse({"error": "Invalid request method"}, status=405)
 
 @csrf_exempt
 def get_student_report(request, contestId, regno):
@@ -1016,18 +1098,15 @@ def publish_mcq(request):
             contest_id = decode_token(token)
 
             data = json.loads(request.body)
-            print("contest_id: ", contest_id)
+            print("contest_id: ",contest_id)
 
             selected_students = data.get('students', [])
-            student_emails = data.get('studentEmails', [])  # Get student emails from the request
 
             # Validate input
             if not contest_id:
                 return JsonResponse({'error': 'Contest ID is required'}, status=400)
             if not isinstance(selected_students, list) or not selected_students:
                 return JsonResponse({'error': 'No students selected'}, status=400)
-            if not isinstance(student_emails, list) or not student_emails:
-                return JsonResponse({'error': 'No student emails provided'}, status=400)
 
             # Check if the contest document exists
             existing_document = collection.find_one({"contestId": contest_id})
@@ -1044,63 +1123,17 @@ def publish_mcq(request):
                 }
             )
 
-            # Fetch assessmentOverview details
-            assessment_overview = existing_document.get("assessmentOverview", {})
-            test_name = assessment_overview.get("name", "Unnamed Assessment")
-            description = assessment_overview.get("description", "")
-            registration_start = assessment_overview.get("registrationStart")
-            registration_end = assessment_overview.get("registrationEnd")
-            duration_dict = existing_document.get("testConfiguration", {}).get("duration", {})
-            duration_hours = int(duration_dict.get("hours", 0))
-            duration_minutes = int(duration_dict.get("minutes", 0))
-
-            # Format date and time
-            start_date = registration_start.strftime("%Y-%m-%d")
-            start_time = registration_start.strftime("%H:%M:%S")
-            end_date = registration_end.strftime("%Y-%m-%d")
-            end_time = registration_end.strftime("%H:%M:%S")
-            formatted_duration = f"{duration_hours} hours {duration_minutes} minutes"
-
-
-            # # Send email to each selected student
-            # for student_email in student_emails:
-            #     # Fetch student details
-            #     student = students_collection.find_one({"email": student_email})
-            #     if not student:
-            #         logger.error(f"Student not found for email: {student_email}")
-            #         continue
-
-            #     student_name = student.get("name", "Student")
-
-            #     subject = f'Instructions for {test_name}'
-            #     message = (
-            #         f'Dear {student_name},\n\n'
-            #         f'You are invited to participate in the {test_name}. Below are the details you need to know:\n\n'
-            #         f'Description: {description}\n'
-            #         f'Test Schedule: From {start_date}, {start_time} to {end_date}, {end_time}\n'
-            #         f'Duration: {formatted_duration}\n\n'
-            #         f'Please ensure you are prepared and available during the specified time window.\n\n'
-            #         f'If you have any questions or encounter any issues, feel free to contact us at {settings.DEFAULT_FROM_EMAIL}.\n\n'
-            #         f'Best of luck with your test!'
-            #     )
-            #     from_email = settings.DEFAULT_FROM_EMAIL
-            #     recipient_list = [student_email]
-            #     send_mail(subject, message, from_email, recipient_list)
-
             return JsonResponse({'message': 'Questions and students appended successfully!'}, status=200)
 
-        except ValueError as e:
-            logger.error(f"ValueError: {str(e)}")
-            return JsonResponse({'error': str(e)}, status=401)
         except Exception as e:
-            logger.error(f"Exception: {str(e)}")
             return JsonResponse({'error': f'Error appending questions and students: {str(e)}'}, status=500)
     else:
         return JsonResponse({'error': 'Invalid request method'}, status=405)
+
         
 # Configure the model
 model = genai.GenerativeModel('gemini-1.5-pro')
-api_key = "AIzaSyCJdtFWP_tI56f7pUYIzKjpkIBMV4Y3jNs"  # Ensure this API key is secure
+api_key = "AIzaSyA1fzr8LD2ywsBvoIt3IFm1efjbhG9GkfM"  # Ensure this API key is secure
 genai.configure(api_key=api_key)
 
 @csrf_exempt
@@ -1298,6 +1331,32 @@ def delete_contest_by_id(request, contest_id):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 @csrf_exempt
+@permission_classes(["DELETE"])
+def reassign(request, contest_id, student_id):
+    try:
+        # Find the contest document
+        contest = mcq_report_collection.find_one({"contest_id": contest_id})
+        if not contest:
+            return JsonResponse({"error": "Contest not found"}, status=404)
+
+        # Filter out the student from the 'students' array
+        updated_students = [s for s in contest.get("students", []) if s["student_id"] != student_id]
+
+        # Update the document in MongoDB
+        result = mcq_report_collection.update_one(
+            {"contest_id": contest_id},
+            {"$set": {"students": updated_students}}
+        )
+
+        if result.modified_count > 0:
+            return JsonResponse({"success": True, "message": "Student reassigned successfully"})
+        else:
+            return JsonResponse({"error": "Student not found or no changes made"}, status=400)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+    
+@csrf_exempt
 def close_session(request, contest_id):
     if request.method == "POST":
         try:
@@ -1350,8 +1409,19 @@ class CustomJSONEncoder(json.JSONEncoder):
         return super().default(o)
 
 @csrf_exempt
-def verify_certificate(request):
-    if request.method == 'POST':
+def verify_certificate(request, unique_id=None):
+    
+    if request.method == 'GET' and unique_id:
+        try:
+            certificate = certificate_collection.find_one({'uniqueId': unique_id})
+            if certificate:
+                return JsonResponse({'status': 'success', 'certificate': certificate}, encoder=CustomJSONEncoder)
+            else:
+                return JsonResponse({'status': 'error', 'message': 'Certificate not found.'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
+
+    elif request.method == 'POST':
         try:
             data = json.loads(request.body)
             unique_id = data.get('unique_id')
@@ -1362,4 +1432,5 @@ def verify_certificate(request):
                 return JsonResponse({'status': 'error', 'message': 'Certificate not found.'})
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)})
+
     return JsonResponse({'status': 'error', 'message': 'Invalid request method.'})
