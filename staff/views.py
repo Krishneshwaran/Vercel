@@ -104,7 +104,7 @@ def staff_login(request):
             key='jwt',
             value=tokens['jwt'],
             httponly=True,
-            samesite='None',     # Ensure the cookie is sent for all routes
+            samesite='None',      # Ensure the cookie is sent for all routes
             secure=True,
             max_age=1 * 24 * 60 * 60  # 1 day expiration
         )
@@ -642,7 +642,7 @@ def fetch_mcq_assessments(request):
         projection = {
             "_id": 1, "contestId": 1, "assessmentOverview.name": 1, "assessmentOverview.registrationStart": 1,
             "assessmentOverview.registrationEnd": 1, "visible_to": 1, "student_details": 1,
-            "testConfiguration.questions": 1, "testConfiguration.duration": 1, "staffId": 1
+            "testConfiguration.questions": 1, "testConfiguration.duration": 1, "staffId": 1, "Overall_Status": 1
         }
         assessments_cursor = mcq_collection.find(query, projection).batch_size(100)
 
@@ -677,17 +677,21 @@ def fetch_mcq_assessments(request):
                     registration_end = registration_end.replace(tzinfo=timezone.utc)
 
             # Determine status
-            if registration_start and registration_end:
-                if current_time < registration_start:
-                    status = "Upcoming"
-                elif registration_start <= current_time <= registration_end:
-                    status = "Live"
-                elif current_time > registration_end:
-                    status = "Completed"
-                else:
-                    status = "Unknown"
+            overall_status = assessment.get("Overall_Status")
+            if overall_status == "closed":
+                status = "Completed"
             else:
-                status = "Date Unavailable"
+                if registration_start and registration_end:
+                    if current_time < registration_start:
+                        status = "Upcoming"
+                    elif registration_start <= current_time <= registration_end:
+                        status = "Live"
+                    elif current_time > registration_end:
+                        status = "Completed"
+                    else:
+                        status = "Unknown"
+                else:
+                    status = "Date Unavailable"
 
             # Fetch completed count using cache
             contest_id = assessment.get("contestId")
@@ -720,8 +724,6 @@ def fetch_mcq_assessments(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-
-
 
 @api_view(["GET", "PUT"])  # Allow both GET and PUT requests
 @permission_classes([AllowAny])

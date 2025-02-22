@@ -16,6 +16,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny  # Correct import for utcnow()
 from rest_framework.response import Response
 from rest_framework import status
+from bson import errors
+
 
 # Initialize MongoDB client
 client = MongoClient("mongodb+srv://krish:krish@assessment.ar5zh.mongodb.net/")
@@ -25,6 +27,8 @@ section_collection = db["MCQ_Assessment_Section_Data"]  # Replace with your coll
 assessment_questions_collection = db["MCQ_Assessment_Data"]
 mcq_report_collection = db["MCQ_Assessment_report"]
 coding_report_collection = db["coding_report"]
+staff_collection = db['staff']
+
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +306,6 @@ def get_questions(request):
             # Check if the contest exists in the database
             assessment = assessment_questions_collection.find_one({"contestId": contest_id})
             if not assessment:
-                # If no contest found, create a new entry with an empty questions list
                 print(f"Creating new contest entry for contest_id: {contest_id}")
                 assessment_questions_collection.insert_one({
                     "contestId": contest_id,
@@ -313,22 +316,34 @@ def get_questions(request):
             # Fetch the questions
             questions = assessment.get("questions", [])
 
-            # Remove duplicates: Only keep unique questions based on text + options
+            # Remove duplicates and count them
             unique_questions = []
             seen_questions = set()
+            duplicate_count = 0
 
             for question in questions:
                 question_key = f"{question['question']}-{'-'.join(question['options'])}"
                 if question_key not in seen_questions:
                     seen_questions.add(question_key)
                     unique_questions.append(question)
+                else:
+                    duplicate_count += 1
+
+            # Update the database with unique questions
+            assessment_questions_collection.update_one(
+                {"contestId": contest_id},
+                {"$set": {"questions": unique_questions}}
+            )
 
             # Convert `_id` to string for JSON response
             for question in unique_questions:
                 if "_id" in question:
-                    question["_id"] = str(question["_id"])  
+                    question["_id"] = str(question["_id"])
 
-            return JsonResponse({"questions": unique_questions}, status=200)
+            return JsonResponse({
+                "questions": unique_questions,
+                "duplicates_removed": duplicate_count
+            }, status=200)
 
         except ValueError as e:
             print(f"Authorization error: {str(e)}")
@@ -1360,22 +1375,21 @@ def reassign(request, contest_id, student_id):
 def close_session(request, contest_id):
     if request.method == "POST":
         try:
-            # Find the document with the given contest ID and update it
             result = collection.update_one(
-                {"contestId": contest_id},  # Find document with this contestId
-                {"$set": {"Overall_Status": "closed"}}  # Set session to "closed"
+                {"contestId": contest_id},  
+                {"$set": {"Overall_Status": "closed"}}
             )
 
-            if result.matched_count > 0:  # Check if any document was updated
+            if result.modified_count > 0:  # Use modified_count instead of matched_count
                 return JsonResponse({"message": "Session closed successfully."}, status=200)
             else:
-                return JsonResponse({"message": "Contest ID not found."}, status=404)
+                return JsonResponse({"message": "Contest ID not found or already closed."}, status=404)
 
         except Exception as e:
-            print(f"Error while updating MongoDB: {e}")
-            return JsonResponse({"message": "Internal server error."}, status=500)
+            return JsonResponse({"message": f"Internal server error: {str(e)}"}, status=500)
 
     return JsonResponse({"message": "Invalid request method."}, status=405)
+
 
 certificate_collection = db['certificate']
 
@@ -1434,3 +1448,131 @@ def verify_certificate(request, unique_id=None):
             return JsonResponse({'status': 'error', 'message': str(e)})
 
     return JsonResponse({'status': 'error', 'message': 'Invalid request method.'})
+
+
+@api_view(['PUT'])
+@permission_classes([AllowAny])
+def update_assessment(request, contest_id):
+    """
+    Endpoint to update an existing assessment.
+    """
+    try:
+        # 1. Extract and decode the JWT token from cookies
+        jwt_token = request.COOKIES.get("jwt")
+        print(f"JWT Token: {jwt_token}")
+        if not jwt_token:
+            logger.warning("JWT Token missing in cookies")
+            raise AuthenticationFailed("Authentication credentials were not provided.")
+
+        try:
+            decoded_token = jwt.decode(jwt_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            logger.info("Decoded JWT Token: %s", decoded_token)
+        except jwt.ExpiredSignatureError:
+            logger.error("Expired JWT Token")
+            raise AuthenticationFailed("Access token has expired. Please log in again.")
+        except jwt.InvalidTokenError:
+            logger.error("Invalid JWT Token")
+            raise AuthenticationFailed("Invalid token. Please log in again.")
+
+        staff_id = decoded_token.get("staff_user")
+        if not staff_id:
+            logger.warning("Invalid payload: 'staff_user' missing")
+            raise AuthenticationFailed("Invalid token payload.")
+
+        # 2. Validate staff existence in MongoDB
+        try:
+            staff = staff_collection.find_one({"_id": ObjectId(staff_id)})
+        except errors.InvalidId:
+            logger.error("Invalid staff_id format in token")
+            raise AuthenticationFailed("Invalid token payload.")
+
+        if not staff:
+            logger.error("Staff not found with ID: %s", staff_id)
+            return JsonResponse({"error": "Staff not found"}, status=404)
+
+        # 3. Retrieve the assessment from MongoDB
+        assessment = assessment_questions_collection.find_one({"contestId": contest_id})
+        if not assessment:
+            logger.warning("Assessment not found with contestId: %s", contest_id)
+            return JsonResponse({"error": "Assessment not found"}, status=404)
+
+        # 4. Parse the request data
+        data = request.data
+        logger.info(f"Update Payload: {data}")
+
+        assessment_overview = data.get("assessmentOverview", {})
+        test_configuration = data.get("testConfiguration", {})
+
+        # 5. Validate date format
+        try:
+            registration_start = str_to_datetime(assessment_overview.get("registrationStart"))
+            registration_end = str_to_datetime(assessment_overview.get("registrationEnd"))
+        except ValueError as e:
+            logger.error("Invalid date format for registrationStart or registrationEnd: %s", str(e))
+            return JsonResponse({"error": "Invalid date format. Use ISO format for dates."}, status=400)
+
+        # 6. Update the assessment document
+        updated_fields = {
+            "assessmentOverview": {
+                "name": assessment_overview.get("name", assessment["assessmentOverview"]["name"]),
+                "description": assessment_overview.get("description", assessment["assessmentOverview"]["description"]),
+                "registrationStart": registration_start if registration_start else assessment["assessmentOverview"]["registrationStart"],
+                "registrationEnd": registration_end if registration_end else assessment["assessmentOverview"]["registrationEnd"],
+                "guidelines": assessment_overview.get("guidelines", assessment["assessmentOverview"]["guidelines"]),
+                "sectionDetails": assessment_overview.get("sectionDetails", assessment["assessmentOverview"].get("sectionDetails", "No")),  # Keep sectionDetails
+            },
+            "testConfiguration": {
+                "questions": test_configuration.get("questions", assessment["testConfiguration"]["questions"]),
+                "duration": test_configuration.get("duration", assessment["testConfiguration"]["duration"]),
+                "fullScreenMode": test_configuration.get("fullScreenMode", assessment["testConfiguration"]["fullScreenMode"]),
+                "faceDetection": test_configuration.get("faceDetection", assessment["testConfiguration"]["faceDetection"]),
+                "deviceRestriction": test_configuration.get("deviceRestriction", assessment["testConfiguration"]["deviceRestriction"]),
+                "noiseDetection": test_configuration.get("noiseDetection", assessment["testConfiguration"]["noiseDetection"]),
+                "passPercentage": test_configuration.get("passPercentage", assessment["testConfiguration"]["passPercentage"]),
+                "resultVisibility": test_configuration.get("resultVisibility", assessment["testConfiguration"]["resultVisibility"]),
+            },
+            "updatedAt": datetime.utcnow(),
+        }
+
+        # 7. Update the document in MongoDB
+        result = assessment_questions_collection.update_one(
+            {"contestId": contest_id},
+            {"$set": updated_fields}
+        )
+
+        if result.modified_count == 0:
+            logger.warning("No assessment modified with contestId: %s", contest_id)
+            return JsonResponse({"message": "No changes were applied"}, status=200)
+
+        logger.info("Assessment document updated: %s", contest_id)
+
+        # 8. Return success response
+        return JsonResponse({"message": "Assessment updated successfully!"}, status=200)
+
+    except AuthenticationFailed as auth_error:
+        logger.warning("Authentication failed: %s", str(auth_error))
+        return JsonResponse({"error": str(auth_error)}, status=401)
+    except Exception as e:
+        logger.exception("Unexpected error occurred")
+        return JsonResponse({"error": str(e)}, status=500)  # Include the actual error message for debugging
+    
+    
+from datetime import datetime
+def str_to_datetime(date_str):
+    if not date_str or date_str == 'T':
+        # If the date string is empty or just contains 'T', return None or raise an error
+        raise ValueError(f"Invalid datetime format: {date_str}")
+
+    try:
+        # Try parsing the full datetime format (with seconds)
+        return datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%S')
+    except ValueError:
+        try:
+            # If there's no seconds, try parsing without seconds
+            return datetime.strptime(date_str, '%Y-%m-%dT%H:%M')
+        except ValueError:
+            # If both parsing methods fail, raise an error
+            raise ValueError(f"Invalid datetime format: {date_str}")# Create Assessment (POST method)
+
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method.'})
+

@@ -45,7 +45,7 @@ urlpatterns = [
     path("api/update_question/<str:question_id>/", update_question, name="update_question"),
     path("api/delete_question/<str:question_id>/", delete_question, name="delete_question"),
     path('mcq_stats/<str:regno>/', mcq_student_results, name='mcq_student_results'),
-
+    # path('api/update-assessment/<str:contest_id>/', assessment.update_assessment, name='update_assessment'),
     # ViewTest on admin
     path('students/stats', fetch_student_stats, name='student_stats'),
     path('api/contests/<str:contestId>/', view_test_details, name='view_test_details'),
